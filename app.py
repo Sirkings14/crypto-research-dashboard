@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from engine import digest_bytes, evaluate_holdout, infer_interval, load_experiments, load_ohlcv, record_experiment, run_sweep
+from market_data import fetch_ohlcv
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -26,10 +27,19 @@ st.caption("Accelerated historical research · exchange-independent · no live o
 with st.sidebar:
     st.header("Research baseline")
     st.write("**BTC/USDT · 5-minute bars · UTC**")
-    st.caption("A starting benchmark only. Confirm the data source and market symbol before interpreting results.")
-    market_symbol = st.text_input("Dataset market label", value="BTC/USDT")
-    data_source = st.text_input("Dataset source label", value="User-provided CSV")
-    uploaded = st.file_uploader("Upload OHLCV CSV", type=["csv"])
+    st.caption("Public market candles are used for research only. No exchange account or API key is connected.")
+    source_mode = st.radio("Candle source", ["Fetch public Binance Spot data", "Upload OHLCV CSV"], index=0)
+    if source_mode == "Fetch public Binance Spot data":
+        market_symbol = st.text_input("Spot market symbol", value="BTCUSDT", help="For example BTCUSDT. This is a public market-data request only.")
+        interval = st.selectbox("Bar interval", ["1m", "3m", "5m", "15m", "30m", "1h", "4h", "1d"], index=2)
+        lookback = st.select_slider("Historical lookback", options=[30, 60, 90, 180, 365], value=90, format_func=lambda x: f"{x} days")
+        uploaded = None
+        data_source = "Binance public Spot market data"
+    else:
+        market_symbol = st.text_input("Dataset market label", value="BTC/USDT")
+        data_source = st.text_input("Dataset source label", value="User-provided CSV")
+        interval, lookback = "5m", 90
+        uploaded = st.file_uploader("Upload OHLCV CSV", type=["csv"])
     st.divider()
     st.subheader("Execution assumptions")
     initial = st.number_input("Starting equity (USDT)", min_value=10.0, max_value=10_000_000.0, value=1_000.0, step=100.0)
@@ -56,19 +66,32 @@ settings = {
 }
 settings_hash = settings_fingerprint(settings)
 
-if not uploaded:
-    st.info("Upload historical OHLCV CSV to begin. No sample P&L is shown, so synthetic or illustrative returns cannot be mistaken for trading results.")
-    st.markdown("Required columns: `timestamp, open, high, low, close`; `volume` is optional. Use 5-minute BTC/USDT candles in UTC for the selected baseline.")
-    st.markdown("[Read the project setup and research rules](README.md)")
-    st.stop()
-
-raw = uploaded.getvalue()
+if source_mode == "Fetch public Binance Spot data":
+    @st.cache_data(ttl=60, show_spinner=False)
+    def cached_public_data(symbol: str, bar_interval: str, days: int) -> pd.DataFrame:
+        return fetch_ohlcv(symbol, bar_interval, days)
+    try:
+        with st.spinner(f"Loading {lookback} days of completed {interval} candles for {market_symbol.upper()}…"):
+            data = cached_public_data(market_symbol, interval, int(lookback))
+        raw = data.to_csv(index=False).encode("utf-8")
+        st.download_button("Download loaded candles as CSV", raw, file_name=f"{market_symbol.upper()}_{interval}_{lookback}d.csv", mime="text/csv")
+    except Exception as exc:
+        st.error(f"Public candle download failed: {exc}")
+        st.info("Switch to “Upload OHLCV CSV” to continue with a local candle file.")
+        st.stop()
+else:
+    if not uploaded:
+        st.info("Upload historical OHLCV CSV to begin. No sample P&L is shown, so synthetic or illustrative returns cannot be mistaken for trading results.")
+        st.markdown("Required columns: `timestamp, open, high, low, close`; `volume` is optional. Use 5-minute BTC/USDT candles in UTC for the selected baseline.")
+        st.markdown("[Read the project setup and research rules](README.md)")
+        st.stop()
+    raw = uploaded.getvalue()
+    try:
+        data = load_ohlcv(raw)
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
 source_digest = digest_bytes(raw)
-try:
-    data = load_ohlcv(raw)
-except ValueError as exc:
-    st.error(str(exc))
-    st.stop()
 
 interval_label, interval_seconds = infer_interval(data)
 gaps = int((data["timestamp"].diff().dt.total_seconds() > interval_seconds * 1.5).sum()) if interval_seconds > 0 else 0
@@ -81,6 +104,52 @@ if interval_seconds != 300:
     st.warning(f"The selected baseline is 5-minute bars; this file appears to use {interval_label}. The engine will run the uploaded interval as-is.")
 if gaps:
     st.warning("The data contains time gaps. Backtest returns across those gaps may not represent the intended bar-by-bar execution.")
+
+st.subheader("Live paper replay · simulated only")
+st.caption("Refreshes on completed public candles while this page is open. It replays a rolling 30-day window from fresh starting equity, so it is a monitoring aid rather than a persistent account or live trading bot.")
+paper_fast, paper_slow = st.columns(2)
+paper_fast = paper_fast.number_input("Paper fast SMA", min_value=2, max_value=100, value=10, step=1)
+paper_slow = paper_slow.number_input("Paper slow SMA", min_value=3, max_value=300, value=40, step=1)
+if paper_fast >= paper_slow:
+    st.warning("Paper fast SMA must be shorter than paper slow SMA.")
+elif source_mode == "Fetch public Binance Spot data":
+    @st.fragment(run_every="60s")
+    def paper_replay():
+        try:
+            @st.cache_data(ttl=60, show_spinner=False)
+            def recent_paper_data(symbol: str, bar_interval: str) -> pd.DataFrame:
+                return fetch_ohlcv(symbol, bar_interval, 30)
+            live = recent_paper_data(market_symbol, interval)
+            if len(live) < int(paper_slow) + 2:
+                st.info("More completed candles are needed for this paper SMA pair.")
+                return
+            close = live["close"].astype(float)
+            signal = (close.rolling(int(paper_fast)).mean() > close.rolling(int(paper_slow)).mean()).fillna(False).shift(1).fillna(False)
+            position = signal.astype(float) * float(allocation)
+            prior = position.shift(1).fillna(0.0)
+            previous_close = close.shift(1)
+            open_price = live["open"].astype(float)
+            gap = (open_price / previous_close - 1).replace([float("inf"), -float("inf")], 0).fillna(0)
+            intrabar = close / open_price - 1
+            cost = (float(fee_bps) + float(slippage_bps)) / 10_000
+            factors = (1 + prior * gap) * (1 - cost * (position - prior).abs()) * (1 + position * intrabar)
+            equity = float(initial) * factors.cumprod()
+            if position.iloc[-1] > 0:
+                equity.iloc[-1] *= 1 - cost * position.iloc[-1]
+            dd = (1 - equity / equity.cummax()).max() * 100
+            a, b, c, d = st.columns(4)
+            a.metric("30-day replay P&L", f"{equity.iloc[-1] - float(initial):,.2f} USDT", f"{equity.iloc[-1] / float(initial) * 100 - 100:.2f}%")
+            b.metric("Replay max drawdown", f"{dd:.2f}%")
+            c.metric("Paper position", "LONG" if position.iloc[-1] > 0 else "CASH", f"{position.iloc[-1]*100:.0f}% allocated")
+            d.metric("Last completed bar UTC", live.timestamp.iloc[-1].strftime("%Y-%m-%d %H:%M"))
+            fig = go.Figure(go.Scatter(x=live.timestamp, y=equity, name="Paper equity", line={"width": 2}))
+            fig.update_layout(height=300, xaxis_title="UTC", yaxis_title="Simulated equity (USDT)", margin={"t": 10})
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as exc:
+            st.warning(f"Paper replay could not refresh: {exc}")
+    paper_replay()
+else:
+    st.info("Choose public market data to enable the auto-refreshing paper replay. CSV uploads remain available for historical tests.")
 
 st.subheader("Run a parameter sweep")
 st.write("Signals use only completed candles. A new target position is applied at the next candle open; the prior position earns the close-to-open gap and the new one earns the open-to-close move.")

@@ -1,50 +1,32 @@
-# Crypto Research Dashboard
+# Crypto Research Lab
 
-Research tool for accelerated, reproducible backtests and, later, live paper simulation. This first milestone is offline: it accepts OHLCV CSV data and never connects to an exchange or places orders.
+Research dashboard for historical OHLCV analysis. Default baseline: BTC/USDT Spot, 5-minute bars, UTC.
 
-## Baseline market
+## Run in Codespaces
 
-- Market: BTC/USDT
-- Bar size: 5 minutes
-- Timestamp convention: UTC
-- Initial strategy family: long/flat simple moving-average crossover
-- Execution assumption: signal from a completed candle is acted on at the next candle's open
-- Position constraint: spot-like, long only, no leverage
+Create or open a Codespace for this repository, wait for environment setup, then run:
 
-BTC/USDT is a useful first benchmark because it is generally one of the deepest crypto markets and has broad data coverage. Five-minute bars provide enough intraday observations for vectorized parameter sweeps while remaining less sensitive to tick-level noise. The market choice is a research baseline, not a profit claim. Exchange-specific symbols and data availability still need to be verified before selecting a data feed.
-
-## Run locally
-
-Python 3.11 or newer is recommended.
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m streamlit run app.py
+```bash
+streamlit run app.py
 ```
 
-The repository includes a `.devcontainer` definition for a repeatable Python 3.11 Codespace. Create a Codespace from the repository, let its setup install the requirements, then run `python -m streamlit run app.py` in the Codespaces terminal. The dashboard port is 8501.
-
-Upload an OHLCV CSV with columns `timestamp,open,high,low,close` and optional `volume`. Timestamps should be ISO-8601 or Unix seconds/milliseconds. Data must be ordered consistently; the loader sorts rows, rejects duplicate timestamps and invalid rows, and validates OHLC prices. The first version expects 5-minute data; it reports the observed interval so mismatched data is visible. There is not yet an automatic market-data downloader; until the chosen public data source is confirmed, use an appropriately sourced CSV and label its market and source in the sidebar.
+Open forwarded port 8501. In the sidebar, choose public Binance Spot candles or upload a CSV. Public candles require no account or API key. The CSV upload is the fallback if the public endpoint is inaccessible. You can download fetched candles from the page.
 
 ## Research workflow
 
-1. Import and inspect the data, coverage, interval, and gaps.
-2. Sweep SMA parameters on the training segment; use the validation segment to select a candidate subject to a drawdown ceiling.
-3. Freeze the candidate, then explicitly run the holdout evaluation. Each holdout run is recorded in a local SQLite experiment log with the data hash and assumptions.
-4. Treat any repeated holdout inspection as a new model-selection decision. The holdout stops being independent once it influences further tuning.
+1. Inspect row count, interval, date coverage and missing-bar gaps.
+2. Sweep SMA parameters across the chronological training and validation segments. Candidates are ranked on validation return subject to the selected drawdown ceiling.
+3. Freeze one candidate and explicitly evaluate it on the holdout. Each holdout evaluation is logged locally in SQLite with the assumptions and data hash.
+4. Use the public-data paper replay to watch a rolling 30-day simulated account refresh from completed candles while the page is open. This replay resets to the configured starting capital and is not a persistent portfolio.
 
-Reported P&L is net of the configured per-side fee and slippage estimates. The model is intentionally simple: bar-based fills, fixed allocation, and no leverage. It does not yet model order-book depth, market impact, latency, funding, taxes, delistings, or exchange outages. Results are hypothetical and are not a forecast.
+## CSV format
 
-## Repository safety
+Required columns: `timestamp, open, high, low, close`; `volume` is optional. Timestamps may be ISO strings or Unix seconds/milliseconds. At least 1,000 valid, unique rows are required. Use UTC timestamps for comparable results.
 
-Never commit `.env` files, credentials, account exports, or private trading data. Keep this repository private while strategy research is in progress. No exchange API credentials are required for this milestone.
+## Model and limits
 
-## Next milestones
-
-1. Robust data ingestion and integrity diagnostics.
-2. Vectorized sweep with train/validation/holdout separation and experiment audit trail.
-3. Public market-data adapter and event-driven real-time paper trading.
-4. Execution realism checks and monitoring; live order placement is outside the current scope.
-
+- Long-only, spot-like position; no leverage, short selling, credentials, exchange account connection, or order placement.
+- Signals use completed candles and apply at the next candle open. Fee and slippage settings are estimates.
+- Train/validation/holdout split is chronological at 60/20/20. Repeatedly using holdout results to tune the model invalidates it as an independent final check.
+- The model does not include order-book depth, market impact, latency, funding, taxes, delistings, or exchange outages. Historical and simulated results do not predict future performance.
+- Codespaces is an interactive environment. Stopping or closing it pauses the app and paper refreshes; experiment records live in its filesystem and should be exported/backed up if needed.
