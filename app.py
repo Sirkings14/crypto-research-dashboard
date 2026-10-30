@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 from hashlib import sha256
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 
 from engine import digest_bytes, evaluate_holdout, infer_interval, load_experiments, load_ohlcv, record_experiment, run_sweep
@@ -66,6 +68,55 @@ settings = {
 }
 settings_hash = settings_fingerprint(settings)
 
+st.subheader("Persistent paper run · BTC/USDT · 5-minute bars")
+st.caption("A scheduled GitHub Actions worker advances this fixed SMA 10/40 paper account from completed public candles and saves each result in the repository. No real orders or exchange credentials are used.")
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_paper_ledger() -> tuple[dict, pd.DataFrame]:
+    root = "https://raw.githubusercontent.com/Sirkings14/crypto-research-dashboard/main/data"
+    state_response = requests.get(f"{root}/paper_state.json", timeout=20)
+    state_response.raise_for_status()
+    history_response = requests.get(f"{root}/paper_history.csv", timeout=30)
+    history_response.raise_for_status()
+    history = pd.read_csv(StringIO(history_response.text))
+    return state_response.json(), history
+
+
+@st.fragment(run_every="60s")
+def persistent_paper_panel() -> None:
+    try:
+        state, history = load_paper_ledger()
+        equity = float(state["equity_usdt"])
+        starting = float(state["initial_equity_usdt"])
+        total_return = (equity / starting - 1.0) * 100.0
+        p1, p2, p3, p4 = st.columns(4)
+        p1.metric("Paper equity", f"{equity:,.2f} USDT", f"{equity - starting:+,.2f} USDT · {total_return:+.2f}%")
+        p2.metric("Maximum drawdown", f"{float(state['max_drawdown_pct']):.2f}%")
+        p3.metric("Current position", "LONG" if float(state["position"]) > 0 else "CASH", f"{float(state['position'])*100:.0f}% allocated")
+        p4.metric("Completed paper bars", f"{int(state['processed_bars']):,}")
+        st.caption(f"Started {state['started_utc']} · latest completed bar {state['last_bar_open_utc']} UTC · last ledger update {state['last_updated_utc']}. Strategy: {state['strategy']}; estimated costs include {state['fee_bps_per_side']:.1f} bps fee and {state['slippage_bps_per_side']:.1f} bps slippage per side.")
+        updated = pd.Timestamp(state["last_updated_utc"])
+        if updated.tzinfo is None:
+            updated = updated.tz_localize("UTC")
+        if (pd.Timestamp.now(tz="UTC") - updated).total_seconds() > 15 * 60:
+            st.warning("The scheduled paper worker has not updated recently. Check the repository Actions tab for the latest run.")
+        if history.empty:
+            st.info("The ledger is initialized and waiting for the next completed candle.")
+            return
+        view = history.tail(3000).copy()
+        view["bar_open_utc"] = pd.to_datetime(view["bar_open_utc"], utc=True)
+        chart = go.Figure(go.Scatter(x=view["bar_open_utc"], y=view["equity_usdt"], name="Paper equity", line={"width": 2}))
+        chart.update_layout(height=340, xaxis_title="UTC", yaxis_title="Simulated equity (USDT)", margin={"t": 10})
+        st.plotly_chart(chart, use_container_width=True)
+        trades = history[history["action"].isin(["ENTER_LONG", "EXIT_TO_CASH"])].tail(20).iloc[::-1]
+        st.write("Recent simulated position changes")
+        st.dataframe(trades[["bar_close_utc", "action", "close", "equity_usdt", "drawdown_pct", "estimated_cost_usdt"]], use_container_width=True, hide_index=True)
+    except Exception as exc:
+        st.info(f"The scheduled paper ledger will appear here after its first successful run. ({exc})")
+
+
+persistent_paper_panel()
+
 if source_mode == "Fetch public Binance Spot data":
     @st.cache_data(ttl=60, show_spinner=False)
     def cached_public_data(symbol: str, bar_interval: str, days: int) -> pd.DataFrame:
@@ -104,52 +155,6 @@ if interval_seconds != 300:
     st.warning(f"The selected baseline is 5-minute bars; this file appears to use {interval_label}. The engine will run the uploaded interval as-is.")
 if gaps:
     st.warning("The data contains time gaps. Backtest returns across those gaps may not represent the intended bar-by-bar execution.")
-
-st.subheader("Live paper replay · simulated only")
-st.caption("Refreshes on completed public candles while this page is open. It replays a rolling 30-day window from fresh starting equity, so it is a monitoring aid rather than a persistent account or live trading bot.")
-paper_fast, paper_slow = st.columns(2)
-paper_fast = paper_fast.number_input("Paper fast SMA", min_value=2, max_value=100, value=10, step=1)
-paper_slow = paper_slow.number_input("Paper slow SMA", min_value=3, max_value=300, value=40, step=1)
-if paper_fast >= paper_slow:
-    st.warning("Paper fast SMA must be shorter than paper slow SMA.")
-elif source_mode == "Fetch public Binance Spot data":
-    @st.fragment(run_every="60s")
-    def paper_replay():
-        try:
-            @st.cache_data(ttl=60, show_spinner=False)
-            def recent_paper_data(symbol: str, bar_interval: str) -> pd.DataFrame:
-                return fetch_ohlcv(symbol, bar_interval, 30)
-            live = recent_paper_data(market_symbol, interval)
-            if len(live) < int(paper_slow) + 2:
-                st.info("More completed candles are needed for this paper SMA pair.")
-                return
-            close = live["close"].astype(float)
-            signal = (close.rolling(int(paper_fast)).mean() > close.rolling(int(paper_slow)).mean()).fillna(False).shift(1).fillna(False)
-            position = signal.astype(float) * float(allocation)
-            prior = position.shift(1).fillna(0.0)
-            previous_close = close.shift(1)
-            open_price = live["open"].astype(float)
-            gap = (open_price / previous_close - 1).replace([float("inf"), -float("inf")], 0).fillna(0)
-            intrabar = close / open_price - 1
-            cost = (float(fee_bps) + float(slippage_bps)) / 10_000
-            factors = (1 + prior * gap) * (1 - cost * (position - prior).abs()) * (1 + position * intrabar)
-            equity = float(initial) * factors.cumprod()
-            if position.iloc[-1] > 0:
-                equity.iloc[-1] *= 1 - cost * position.iloc[-1]
-            dd = (1 - equity / equity.cummax()).max() * 100
-            a, b, c, d = st.columns(4)
-            a.metric("30-day replay P&L", f"{equity.iloc[-1] - float(initial):,.2f} USDT", f"{equity.iloc[-1] / float(initial) * 100 - 100:.2f}%")
-            b.metric("Replay max drawdown", f"{dd:.2f}%")
-            c.metric("Paper position", "LONG" if position.iloc[-1] > 0 else "CASH", f"{position.iloc[-1]*100:.0f}% allocated")
-            d.metric("Last completed bar UTC", live.timestamp.iloc[-1].strftime("%Y-%m-%d %H:%M"))
-            fig = go.Figure(go.Scatter(x=live.timestamp, y=equity, name="Paper equity", line={"width": 2}))
-            fig.update_layout(height=300, xaxis_title="UTC", yaxis_title="Simulated equity (USDT)", margin={"t": 10})
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception as exc:
-            st.warning(f"Paper replay could not refresh: {exc}")
-    paper_replay()
-else:
-    st.info("Choose public market data to enable the auto-refreshing paper replay. CSV uploads remain available for historical tests.")
 
 st.subheader("Run a parameter sweep")
 st.write("Signals use only completed candles. A new target position is applied at the next candle open; the prior position earns the close-to-open gap and the new one earns the open-to-close move.")
