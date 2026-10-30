@@ -1,1 +1,2 @@
 bar_open_utc,bar_close_utc,open,high,low,close,target_position,position,equity_usdt,return_pct,drawdown_pct,estimated_cost_usdt,action
+2026-10-30T14:30:00+00:00,2026-10-30T14:35:00+00:00,76896.46,76972.01,76711.0,76836.23,0.0,0.0,1000.0,0.0,0.0,0.0,HOLD_CASH
