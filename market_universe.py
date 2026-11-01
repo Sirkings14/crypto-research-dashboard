@@ -129,10 +129,21 @@ def fetch_completed_candles(
         if not provider_confirmed or close_ms >= current_ms:
             continue
 
+        if market == "spot":
+            base_volume = volume
+            quote_volume = float(item[7]) if len(item) > 7 else None
+            volume_unit = "base_asset"
+        else:
+            base_volume = float(item[6]) if len(item) > 6 else None
+            quote_volume = float(item[7]) if len(item) > 7 else None
+            volume_unit = "contracts"
+
         candles.append({
             "timestamp": datetime.fromtimestamp(open_ms / 1000, tz=timezone.utc).isoformat(),
             "open": open_price, "high": high, "low": low,
-            "close": close, "volume": volume,
+            "close": close, "volume": volume, "volume_unit": volume_unit,
+            "base_volume": base_volume, "quote_volume": quote_volume,
+            "quote_volume_unit": "USDT",
         })
 
     if not candles:
