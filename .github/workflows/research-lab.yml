@@ -6,6 +6,7 @@ on:
     paths:
       - "strategy_lab.py"
       - "strategy_engine.py"
+      - "paper_portfolio_worker.py"
       - "tests/**"
       - ".github/workflows/research-lab.yml"
       - "requirements.txt"
