@@ -63,4 +63,6 @@ The Phase 2 collector reads completed hourly candles for a bounded initial unive
 
 The scheduled GitHub Actions workflow runs every four hours and stores a JSON snapshot as a seven-day artifact rather than committing market snapshots into Git history. Each snapshot records its provider, per-market failures and the explicit `live_trading_enabled: false` safety flag. A successful market-data scan is not evidence of a trading edge and does not enable order placement.
 
+Volume fields preserve their source units: Binance Spot `volume` is base-asset quantity, while OKX swap `volume` is contract count. The collector also records `base_volume` and `quote_volume` (USDT) separately so cross-market volume comparisons can use a common quote-currency measure rather than mixing contracts and coins.
+
 Official endpoint reference: [OKX V5 API – Candlesticks](https://www.okx.com/docs-v5/en/#rest-api-market-data-get-candlesticks).
