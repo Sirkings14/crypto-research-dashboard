@@ -38,3 +38,16 @@ Required columns: `timestamp, open, high, low, close`; `volume` is optional. Tim
 - Train/validation/holdout split is chronological at 60/20/20. Repeatedly using holdout results to tune the model invalidates it as an independent final check.
 - The model does not include order-book depth, market impact, latency, funding, taxes, delistings, or exchange outages. Historical and simulated results do not predict future performance.
 - Codespaces is an interactive dashboard environment. Stopping or closing it pauses the app, while the scheduled GitHub Actions paper worker continues independently. Historical holdout experiment records remain in the Codespace filesystem; the paper ledger is public in this repository.
+
+
+## Multi-strategy research lab
+
+The experimental `strategy_lab.py` dashboard evaluates a deterministic grid of more than 1,000 SMA, EMA, momentum, RSI, Bollinger-band, and Donchian configurations. It ranks candidates on a chronological validation segment after a drawdown filter, records every trial with its data hash and assumptions in the local SQLite database, and only calculates holdout metrics after a candidate is selected. The holdout is then consumed and must not be used to tune that strategy.
+
+Run it in the Codespace with:
+
+```bash
+streamlit run strategy_lab.py
+```
+
+This is a separate historical research view; it does not change the fixed paper account or place orders. The strategy grid is a discovery tool, not evidence of a durable edge. Searching many variants increases selection bias; candidates require fresh data, forward paper evaluation, and explicit risk review before any discussion of live deployment. MiroFish can be used to explore narrative scenarios that suggest hypotheses, but its agent simulations are not a substitute for historical execution data or calibrated market forecasts.
