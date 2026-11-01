@@ -160,6 +160,33 @@ def persist_trials(rows: list[dict], data_hash: str, assumptions: dict) -> None:
               json.dumps(x["validation"], sort_keys=True)) for x in rows])
 
 
+def holdout_used(experiment_hash: str) -> bool:
+    if not DB_PATH.exists():
+        return False
+    with sqlite3.connect(DB_PATH) as db:
+        exists = db.execute(
+            "SELECT 1 FROM strategy_holdout_evaluations WHERE experiment_hash=? LIMIT 1",
+            (experiment_hash,),
+        ).fetchone()
+    return exists is not None
+
+
+def persist_holdout(experiment_hash: str, data_hash: str, cfg: dict,
+                    assumptions: dict, result: dict) -> None:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS strategy_holdout_evaluations (
+            experiment_hash TEXT PRIMARY KEY, created_utc TEXT NOT NULL,
+            data_sha256 TEXT NOT NULL, strategy_json TEXT NOT NULL,
+            assumptions_json TEXT NOT NULL, result_json TEXT NOT NULL)""")
+        db.execute("""INSERT INTO strategy_holdout_evaluations
+            (experiment_hash,created_utc,data_sha256,strategy_json,assumptions_json,result_json)
+            VALUES (?,?,?,?,?,?)""",
+            (experiment_hash, datetime.now(timezone.utc).isoformat(), data_hash,
+             json.dumps(cfg, sort_keys=True), json.dumps(assumptions, sort_keys=True),
+             json.dumps(result, sort_keys=True)))
+
+
 def run_grid(frame: pd.DataFrame, configs: list[dict], allocation: float, fee_bps: float,
              slippage_bps: float, max_drawdown: float) -> pd.DataFrame:
     n = len(frame)
@@ -241,6 +268,12 @@ else:
 frame = frame.copy()
 frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
 data_hash = hashlib.sha256(raw).hexdigest()
+experiment_assumptions = {"symbol": symbol, "interval": interval, "initial_equity": initial,
+                          "allocation": allocation, "fee_bps_per_side": fee_bps,
+                          "slippage_bps_per_side": slippage_bps, "split": [0.6, 0.2, 0.2]}
+experiment_hash = hashlib.sha256(
+    (data_hash + json.dumps(experiment_assumptions, sort_keys=True)).encode("utf-8")
+).hexdigest()
 grid = strategy_grid()
 st.metric("Distinct configurations in default grid", f"{len(grid):,}")
 st.caption(f"{symbol} · {len(frame):,} bars · {frame['timestamp'].iloc[0]} to {frame['timestamp'].iloc[-1]} UTC · SHA-256 {data_hash[:16]}…")
@@ -250,9 +283,7 @@ if st.button(f"Run all {len(grid):,} configurations", type="primary"):
     try:
         with st.spinner(f"Evaluating {len(grid):,} fixed configurations…"):
             result = run_grid(frame, grid, allocation, fee_bps, slippage_bps, max_dd)
-        assumptions = {"symbol": symbol, "interval": interval, "initial_equity": initial,
-                       "allocation": allocation, "fee_bps_per_side": fee_bps,
-                       "slippage_bps_per_side": slippage_bps, "split": [0.6, 0.2, 0.2],
+        assumptions = {**experiment_assumptions,
                        "ranking": "validation Sharpe then return, after validation drawdown filter"}
         persist_trials([{"strategy": r["_strategy"],
                          "train": {"return_pct": r["train_return_pct"], "max_drawdown_pct": r["train_max_drawdown_pct"]},
@@ -280,13 +311,17 @@ if result is not None:
         selection = st.selectbox("Freeze a candidate for the untouched holdout",
                                  eligible.index.tolist(),
                                  format_func=lambda i: f"{result.loc[i, 'family']} · {result.loc[i, 'strategy']}")
-        if st.button("Evaluate selected candidate on holdout"):
+        already_evaluated = holdout_used(experiment_hash)
+        if already_evaluated:
+            st.warning("The holdout for this data and these assumptions has already been used. Start a new experiment with genuinely new data for another final evaluation.")
+        if st.button("Evaluate selected candidate on holdout", disabled=already_evaluated):
             cfg = result.loc[selection, "_strategy"]
             signal = make_signal(frame["close"], cfg)
             equity, returns, target = simulate(frame, signal, allocation, fee_bps, slippage_bps)
             split = int(len(frame) * .80)
             interval_seconds = float(frame["timestamp"].diff().dt.total_seconds().median())
             holdout = metrics(equity, returns, target, split, len(frame), interval_seconds)
+            persist_holdout(experiment_hash, data_hash, cfg, experiment_assumptions, holdout)
             st.session_state["holdout_result"] = {"cfg": cfg, "metrics": holdout, "data_hash": data_hash, "equity": equity.copy()}
     holdout = st.session_state.get("holdout_result")
     if holdout and holdout["data_hash"] == data_hash:
