@@ -16,7 +16,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: 30-day-strategy-paper-run
+  group: paper-ledger-commits
   cancel-in-progress: false
 
 jobs:
