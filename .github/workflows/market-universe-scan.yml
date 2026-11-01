@@ -1,0 +1,41 @@
+name: Public multi-market snapshot
+
+on:
+  schedule:
+    - cron: "41 */4 * * *"
+  workflow_dispatch:
+  push:
+    branches: [phase2-multi-market-data]
+    paths:
+      - "market_universe.py"
+      - "market_universe_worker.py"
+      - ".github/workflows/market-universe-scan.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-market-snapshot
+  cancel-in-progress: false
+
+jobs:
+  collect-public-market-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install data dependencies
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Collect completed Spot and Futures candles
+        run: python market_universe_worker.py
+      - name: Preserve snapshot as a short-lived artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-market-snapshot
+          path: data/market_universe_latest.json
+          if-no-files-found: warn
+          retention-days: 7
