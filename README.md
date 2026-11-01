@@ -51,3 +51,10 @@ streamlit run strategy_lab.py
 ```
 
 This is a separate historical research view; it does not change the fixed paper account or place orders. The default grid contains 1,030 configurations and caps each run at 100,000 bars to keep research responsive. The strategy grid is a discovery tool, not evidence of a durable edge. Searching many variants increases selection bias; candidates require fresh data, forward paper evaluation, and explicit risk review before any discussion of live deployment. MiroFish can be used to explore narrative scenarios that suggest hypotheses, but its agent simulations are not a substitute for historical execution data or calibrated market forecasts.
+
+
+## 30-day forward paper experiment
+
+After this change is merged, the scheduled worker seeds 1,030 separate hypothetical BTC/USDT Spot accounts at the latest completed 5-minute candle. Each starts with 1,000 USDT, uses 50% allocation and estimated 10 bps fees plus 5 bps slippage per side. The worker catches up missed completed candles, writes daily strategy scorecards to `data/strategy_paper_daily.csv`, and stops the experiment after 30 days. Current state is in `data/strategy_paper_state.json`.
+
+This experiment is paper-only and does not place orders. GitHub Actions scheduling can be delayed; the worker catches up from public candles when it runs, and refuses to silently skip data older than its recovery window. A positive result over one month is not by itself proof of a durable edge or authorization to begin live trading.
