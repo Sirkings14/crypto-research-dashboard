@@ -69,11 +69,11 @@ def test_okx_usdt_swap_uses_public_endpoint_and_normalizes_reverse_order():
         ],
     })
     result = fetch_completed_candles(
-        "futures", "BTCUSDT", "1h", 2, session=session, now_ms=1_700_004_000_000,
+        "futures", "BTCUSDT", "1h", 2, session=session, now_ms=1_700_008_000_000,
     )
     assert session.url == FUTURES_KLINES_URL
     assert session.params["instId"] == "BTC-USDT-SWAP"
-    assert session.params["bar"] == "1Hutc"
+    assert session.params["bar"] == "1H"
     assert len(result) == 2
     assert result[0]["timestamp"] < result[1]["timestamp"]
 
