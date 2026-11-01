@@ -114,7 +114,7 @@ def analyze_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
         elif rsi14 <= 30.0:
             reasons.append("RSI is oversold; no automatic reversal assumed")
 
-    if score >= 3:
+    if score >= 2:
         bias = "bullish"
     elif score <= -2:
         bias = "bearish"
