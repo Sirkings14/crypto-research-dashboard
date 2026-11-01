@@ -88,7 +88,7 @@ def initialize(candles: pd.DataFrame) -> dict:
         "last_updated_utc": started.isoformat(),
         "last_bar_open_utc": pd.Timestamp(latest["timestamp"]).isoformat(),
         "last_close": float(latest["close"]),
-        "last_snapshot_date": pd.Timestamp(latest["timestamp"]).date().isoformat(),
+        "last_recorded_date": (pd.Timestamp(latest["timestamp"]).date() - timedelta(days=1)).isoformat(),
         "initial_equity_usdt_per_strategy": INITIAL_EQUITY,
         "allocation": ALLOCATION, "fee_bps_per_side": FEE_BPS,
         "slippage_bps_per_side": SLIPPAGE_BPS,
@@ -102,9 +102,9 @@ def initialize(candles: pd.DataFrame) -> dict:
 
 def finalize(state: dict, at: datetime) -> None:
     last_day = pd.Timestamp(state["last_bar_open_utc"]).date().isoformat()
-    if state.get("last_snapshot_date") != last_day:
+    if state.get("last_recorded_date") != last_day:
         record_daily_snapshot(last_day, state)
-        state["last_snapshot_date"] = last_day
+        state["last_recorded_date"] = last_day
     state.update({"status": "complete", "completed_utc": at.isoformat(),
                   "last_updated_utc": at.isoformat()})
     write_state(state)
@@ -157,10 +157,10 @@ def main() -> None:
     for bar in eligible.itertuples(index=False):
         timestamp = pd.Timestamp(bar.timestamp)
         current_date = timestamp.date().isoformat()
-        snapshot_date = state.get("last_snapshot_date", current_date)
-        if current_date > snapshot_date:
-            record_daily_snapshot(snapshot_date, state)
-            state["last_snapshot_date"] = current_date
+        previous_day = pd.Timestamp(state["last_bar_open_utc"]).date().isoformat()
+        if current_date > previous_day and state.get("last_recorded_date") != previous_day:
+            record_daily_snapshot(previous_day, state)
+            state["last_recorded_date"] = previous_day
         idx = index_by_time[timestamp]
         previous_idx = idx - 1
         gap_return = float(bar.open) / prior_close - 1.0
