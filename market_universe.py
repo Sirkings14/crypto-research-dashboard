@@ -1,8 +1,8 @@
-"""Read-only multi-asset Spot and USD-M perpetual market data.
+"""Read-only multi-asset Spot and USDT perpetual market data.
 
-Spot candles come from Binance public market data. Linear perpetual candles
-come from Bybit's unauthenticated V5 public market-data endpoint. No account,
-signing, leverage, or order-placement methods are exposed here.
+Spot candles come from Binance public market data. USDT perpetual swap candles
+come from OKX's unauthenticated V5 public market-data endpoint. This module
+contains no account, signing, leverage, or order-placement methods.
 """
 from __future__ import annotations
 
@@ -13,12 +13,12 @@ from typing import Any
 import requests
 
 SPOT_KLINES_URL = "https://data-api.binance.vision/api/v3/klines"
-FUTURES_KLINES_URL = "https://api.bybit.com/v5/market/kline"
+FUTURES_KLINES_URL = "https://openapi.okx.com/api/v5/market/candles"
 DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT")
 INTERVALS = {
-    "5m": ("5", 300_000), "15m": ("15", 900_000),
-    "1h": ("60", 3_600_000), "4h": ("240", 14_400_000),
-    "1d": ("D", 86_400_000),
+    "5m": ("5m", 300_000), "15m": ("15m", 900_000),
+    "1h": ("1Hutc", 3_600_000), "4h": ("4Hutc", 14_400_000),
+    "1d": ("1Dutc", 86_400_000),
 }
 
 
@@ -70,7 +70,7 @@ def fetch_completed_candles(
         raise ValueError("retries must be between 1 and 5")
 
     client = session or requests.Session()
-    client.headers.update({"User-Agent": "CryptoResearchLab/2.1"})
+    client.headers.update({"User-Agent": "CryptoResearchLab/2.2"})
     current_ms = now_ms if now_ms is not None else int(datetime.now(timezone.utc).timestamp() * 1000)
 
     if market == "spot":
@@ -80,30 +80,36 @@ def fetch_completed_candles(
         )
         if not isinstance(payload, list):
             raise ValueError(f"spot {symbol}: expected a candle list")
-        raw_rows = [(row, int(row[6]) if isinstance(row, list) and len(row) > 6 else None)
-                    for row in payload]
+        raw_rows = [
+            (row, int(row[6]) if isinstance(row, list) and len(row) > 6 else None, True)
+            for row in payload
+        ]
         provider = "binance_spot"
     else:
-        bybit_interval, duration_ms = INTERVALS[interval]
+        okx_bar, duration_ms = INTERVALS[interval]
+        instrument = f"{symbol[:-4]}-USDT-SWAP"
         payload = _request_json(
             client, FUTURES_KLINES_URL,
-            {"category": "linear", "symbol": symbol, "interval": bybit_interval, "limit": limit},
-            retries,
+            {"instId": instrument, "bar": okx_bar, "limit": limit}, retries,
         )
-        if not isinstance(payload, dict) or payload.get("retCode") != 0:
-            code = payload.get("retCode") if isinstance(payload, dict) else "invalid_response"
-            message = payload.get("retMsg", "unexpected response") if isinstance(payload, dict) else "unexpected response"
-            raise ValueError(f"Bybit linear {symbol}: API error {code}: {message}")
-        rows = payload.get("result", {}).get("list", [])
+        if not isinstance(payload, dict) or payload.get("code") != "0":
+            code = payload.get("code") if isinstance(payload, dict) else "invalid_response"
+            message = payload.get("msg", "unexpected response") if isinstance(payload, dict) else "unexpected response"
+            raise ValueError(f"OKX USDT swap {instrument}: API error {code}: {message}")
+        rows = payload.get("data", [])
         if not isinstance(rows, list):
-            raise ValueError(f"Bybit linear {symbol}: expected result.list")
-        raw_rows = [(row, int(row[0]) + duration_ms - 1 if isinstance(row, list) and row else None)
-                    for row in reversed(rows)]
-        provider = "bybit_linear"
+            raise ValueError(f"OKX USDT swap {instrument}: expected data list")
+        # OKX returns newest-first; normalize to ascending before validation.
+        raw_rows = [
+            (row, int(row[0]) + duration_ms - 1 if isinstance(row, list) and row else None,
+             len(row) <= 8 or str(row[8]) == "1")
+            for row in reversed(rows)
+        ]
+        provider = "okx_usdt_swap"
 
     candles: list[dict[str, Any]] = []
     previous_open_ms = -1
-    for item, close_ms in raw_rows:
+    for item, close_ms, provider_confirmed in raw_rows:
         if not isinstance(item, list) or len(item) < 6 or close_ms is None:
             raise ValueError(f"{market} {symbol}: malformed candle row")
         try:
@@ -120,7 +126,7 @@ def fetch_completed_candles(
             raise ValueError(f"{market} {symbol}: invalid price or volume")
         if high < max(open_price, close) or low > min(open_price, close):
             raise ValueError(f"{market} {symbol}: inconsistent OHLC values")
-        if close_ms >= current_ms:
+        if not provider_confirmed or close_ms >= current_ms:
             continue
 
         candles.append({
@@ -153,7 +159,7 @@ def scan_universe(
                 )
                 results.append({
                     "market": market,
-                    "provider": "binance_spot" if market == "spot" else "bybit_linear",
+                    "provider": "binance_spot" if market == "spot" else "okx_usdt_swap",
                     "symbol": symbol,
                     "interval": interval,
                     "candle_count": len(candles),
