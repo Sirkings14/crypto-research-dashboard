@@ -17,8 +17,8 @@ FUTURES_KLINES_URL = "https://openapi.okx.com/api/v5/market/candles"
 DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT")
 INTERVALS = {
     "5m": ("5m", 300_000), "15m": ("15m", 900_000),
-    "1h": ("1Hutc", 3_600_000), "4h": ("4Hutc", 14_400_000),
-    "1d": ("1Dutc", 86_400_000),
+    "1h": ("1H", 3_600_000), "4h": ("4H", 14_400_000),
+    "1d": ("1D", 86_400_000),
 }
 
 
