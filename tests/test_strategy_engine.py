@@ -58,3 +58,22 @@ def test_metrics_are_finite_and_count_position_changes():
     assert np.isfinite(result["sharpe"])
     assert result["position_changes"] == 2
     assert result["max_drawdown_pct"] > 0
+
+
+def test_forward_worker_seeds_all_accounts_without_historical_pnl(tmp_path, monkeypatch):
+    import paper_portfolio_worker as worker
+
+    monkeypatch.setattr(worker, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(worker, "STATE_PATH", tmp_path / "strategy_paper_state.json")
+    monkeypatch.setattr(worker, "DAILY_PATH", tmp_path / "strategy_paper_daily.csv")
+    timestamps = pd.date_range("2025-01-01", periods=250, freq="5min", tz="UTC")
+    candles = pd.DataFrame({"timestamp": timestamps, "open": 100.0, "high": 101.0,
+                            "low": 99.0, "close": 100.0})
+    state = worker.initialize(candles)
+    assert state["status"] == "running"
+    assert state["strategy_count"] == 1030
+    assert len(state["accounts"]) == 1030
+    assert all(a["equity_usdt"] == worker.INITIAL_EQUITY for a in state["accounts"].values())
+    assert all(a["position"] == 0.0 for a in state["accounts"].values())
+    assert worker.STATE_PATH.exists()
+    assert worker.DAILY_PATH.exists()
