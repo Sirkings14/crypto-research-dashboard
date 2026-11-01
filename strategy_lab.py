@@ -164,6 +164,11 @@ def holdout_used(experiment_hash: str) -> bool:
     if not DB_PATH.exists():
         return False
     with sqlite3.connect(DB_PATH) as db:
+        table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='strategy_holdout_evaluations'"
+        ).fetchone()
+        if table is None:
+            return False
         exists = db.execute(
             "SELECT 1 FROM strategy_holdout_evaluations WHERE experiment_hash=? LIMIT 1",
             (experiment_hash,),
