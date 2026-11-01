@@ -59,8 +59,8 @@ This experiment is paper-only and does not place orders. GitHub Actions scheduli
 
 ## Multi-market public data foundation
 
-The Phase 2 collector reads completed hourly candles for a bounded initial universe (BTC, ETH, BNB, SOL, XRP, ADA and DOGE). Spot data is sourced from Binance public market data; USDT linear-perpetual candle data is sourced from Bybit's unauthenticated V5 public market-data endpoint. This is a data-source choice only, not a decision about where the user should open an account or execute trades.
+The Phase 2 collector reads completed hourly candles for a bounded initial universe (BTC, ETH, BNB, SOL, XRP, ADA and DOGE). Spot data is sourced from Binance public market data; USDT perpetual swap candles are sourced from OKX's unauthenticated V5 public market-data endpoint. This is a data-source choice only, not a decision about where the user should open an account or execute trades.
 
 The scheduled GitHub Actions workflow runs every four hours and stores a JSON snapshot as a seven-day artifact rather than committing market snapshots into Git history. Each snapshot records its provider, per-market failures and the explicit `live_trading_enabled: false` safety flag. A successful market-data scan is not evidence of a trading edge and does not enable order placement.
 
-Official endpoint reference: [Bybit V5 Get Kline](https://bybit-exchange.github.io/docs/v5/market/kline).
+Official endpoint reference: [OKX V5 API – Candlesticks](https://www.okx.com/docs-v5/en/#rest-api-market-data-get-candlesticks).
