@@ -36,30 +36,57 @@ class FakeSession:
         return FakeResponse(self.payload)
 
 
-def candle(open_ms: int, close_ms: int, *, close: str = "101"):
+def binance_candle(open_ms: int, close_ms: int, *, close: str = "101"):
     return [open_ms, "100", "105", "99", close, "12.5", close_ms]
 
 
-@pytest.mark.parametrize(
-    ("market", "expected_url"),
-    [("spot", SPOT_KLINES_URL), ("futures", FUTURES_KLINES_URL)],
-)
-def test_uses_correct_public_market_endpoint_and_filters_open_candle(market, expected_url):
+def bybit_candle(open_ms: int, *, close: str = "101"):
+    return [str(open_ms), "100", "105", "99", close, "12.5", "1250"]
+
+
+def test_binance_spot_uses_correct_endpoint_and_filters_open_candle():
     session = FakeSession([
-        candle(1_700_000_000_000, 1_700_000_299_999),
-        candle(1_700_000_300_000, 1_700_000_599_999),
-        candle(1_700_000_600_000, 1_700_000_899_999),
+        binance_candle(1_700_000_000_000, 1_700_000_299_999),
+        binance_candle(1_700_000_300_000, 1_700_000_599_999),
+        binance_candle(1_700_000_600_000, 1_700_000_899_999),
     ])
-
     result = fetch_completed_candles(
-        market, "BTCUSDT", "5m", 3, session=session,
-        now_ms=1_700_000_800_000,
+        "spot", "BTCUSDT", "5m", 3, session=session, now_ms=1_700_000_800_000,
     )
-
-    assert session.url == expected_url
+    assert session.url == SPOT_KLINES_URL
     assert session.params["symbol"] == "BTCUSDT"
     assert len(result) == 2
     assert result[-1]["close"] == 101.0
+
+
+def test_bybit_linear_uses_v5_endpoint_and_normalizes_reverse_order():
+    session = FakeSession({
+        "retCode": 0,
+        "retMsg": "OK",
+        "result": {"list": [
+            bybit_candle(1_700_003_600_000),
+            bybit_candle(1_700_000_000_000),
+        ]},
+    })
+    result = fetch_completed_candles(
+        "futures", "BTCUSDT", "1h", 2, session=session, now_ms=1_700_004_000_000,
+    )
+    assert session.url == FUTURES_KLINES_URL
+    assert session.params["category"] == "linear"
+    assert session.params["interval"] == "60"
+    assert len(result) == 2
+    assert result[0]["timestamp"] < result[1]["timestamp"]
+
+
+def test_bybit_filters_current_unclosed_candle():
+    session = FakeSession({
+        "retCode": 0,
+        "result": {"list": [bybit_candle(1_700_003_600_000), bybit_candle(1_700_000_000_000)]},
+    })
+    result = fetch_completed_candles(
+        "futures", "BTCUSDT", "1h", 2, session=session, now_ms=1_700_003_700_000,
+    )
+    assert len(result) == 1
 
 
 def test_rejects_non_usdt_symbol():
@@ -67,10 +94,10 @@ def test_rejects_non_usdt_symbol():
         fetch_completed_candles("spot", "BTCUSD", session=FakeSession([]))
 
 
-def test_rejects_out_of_order_candles():
+def test_rejects_out_of_order_spot_candles():
     session = FakeSession([
-        candle(1_700_000_300_000, 1_700_000_599_999),
-        candle(1_700_000_000_000, 1_700_000_299_999),
+        binance_candle(1_700_000_300_000, 1_700_000_599_999),
+        binance_candle(1_700_000_000_000, 1_700_000_299_999),
     ])
     with pytest.raises(ValueError, match="chronological"):
         fetch_completed_candles(
@@ -79,8 +106,18 @@ def test_rejects_out_of_order_candles():
 
 
 def test_rejects_inconsistent_ohlc():
-    session = FakeSession([[1_700_000_000_000, "100", "100", "99", "101", "1", 1_700_000_299_999]])
+    session = FakeSession([
+        [1_700_000_000_000, "100", "100", "99", "101", "1", 1_700_000_299_999]
+    ])
     with pytest.raises(ValueError, match="inconsistent OHLC"):
         fetch_completed_candles(
             "spot", "BTCUSDT", session=session, now_ms=1_800_000_000_000
+        )
+
+
+def test_rejects_bybit_api_error():
+    session = FakeSession({"retCode": 10001, "retMsg": "Invalid symbol", "result": {}})
+    with pytest.raises(ValueError, match="API error 10001"):
+        fetch_completed_candles(
+            "futures", "BTCUSDT", session=session, now_ms=1_800_000_000_000
         )
