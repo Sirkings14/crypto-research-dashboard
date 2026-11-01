@@ -308,12 +308,12 @@ if st.button(f"Run all {len(grid):,} configurations", type="primary"):
                                         "position_changes": r["validation_position_changes"]}}
                         for _, r in result.iterrows()], data_hash, assumptions)
         st.session_state["grid_result"] = result
-        st.session_state["grid_hash"] = data_hash
+        st.session_state["grid_hash"] = experiment_hash
     except Exception as exc:
         st.error(f"Search failed: {exc}")
 
 result = st.session_state.get("grid_result")
-if result is not None and st.session_state.get("grid_hash") != data_hash:
+if result is not None and st.session_state.get("grid_hash") != experiment_hash:
     st.warning("Data changed. Run the full search again before selecting a candidate.")
     result = None
 if result is not None:
@@ -337,9 +337,9 @@ if result is not None:
             interval_seconds = float(frame["timestamp"].diff().dt.total_seconds().median())
             holdout = metrics(equity, returns, target, split, len(frame), interval_seconds)
             persist_holdout(experiment_hash, data_hash, cfg, experiment_assumptions, holdout)
-            st.session_state["holdout_result"] = {"cfg": cfg, "metrics": holdout, "data_hash": data_hash, "equity": equity.copy()}
+            st.session_state["holdout_result"] = {"cfg": cfg, "metrics": holdout, "data_hash": data_hash, "experiment_hash": experiment_hash, "equity": equity.copy()}
     holdout = st.session_state.get("holdout_result")
-    if holdout and holdout["data_hash"] == data_hash:
+    if holdout and holdout.get("experiment_hash") == experiment_hash:
         st.subheader("Frozen holdout result")
         st.write(holdout["cfg"])
         st.json(holdout["metrics"])
