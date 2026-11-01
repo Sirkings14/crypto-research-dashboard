@@ -37,11 +37,11 @@ class FakeSession:
 
 
 def binance_candle(open_ms: int, close_ms: int, *, close: str = "101"):
-    return [open_ms, "100", "105", "99", close, "12.5", close_ms]
+    return [open_ms, "100", "105", "99", close, "12.5", close_ms, "1250"]
 
 
 def okx_candle(open_ms: int, *, close: str = "101", confirmed: str = "1"):
-    return [str(open_ms), "100", "105", "99", close, "12.5", "1250", "1250", confirmed]
+    return [str(open_ms), "100", "105", "99", close, "12.5", "1.25", "1250", confirmed]
 
 
 def test_binance_spot_uses_correct_endpoint_and_filters_open_candle():
@@ -57,6 +57,8 @@ def test_binance_spot_uses_correct_endpoint_and_filters_open_candle():
     assert session.params["symbol"] == "BTCUSDT"
     assert len(result) == 2
     assert result[-1]["close"] == 101.0
+    assert result[-1]["volume_unit"] == "base_asset"
+    assert result[-1]["quote_volume"] == 1250.0
 
 
 def test_okx_usdt_swap_uses_public_endpoint_and_normalizes_reverse_order():
@@ -76,6 +78,9 @@ def test_okx_usdt_swap_uses_public_endpoint_and_normalizes_reverse_order():
     assert session.params["bar"] == "1H"
     assert len(result) == 2
     assert result[0]["timestamp"] < result[1]["timestamp"]
+    assert result[-1]["volume_unit"] == "contracts"
+    assert result[-1]["base_volume"] == 1.25
+    assert result[-1]["quote_volume"] == 1250.0
 
 
 def test_okx_uses_confirm_flag_to_exclude_unclosed_candle():
