@@ -40,8 +40,8 @@ def binance_candle(open_ms: int, close_ms: int, *, close: str = "101"):
     return [open_ms, "100", "105", "99", close, "12.5", close_ms]
 
 
-def bybit_candle(open_ms: int, *, close: str = "101"):
-    return [str(open_ms), "100", "105", "99", close, "12.5", "1250"]
+def okx_candle(open_ms: int, *, close: str = "101", confirmed: str = "1"):
+    return [str(open_ms), "100", "105", "99", close, "12.5", "1250", "1250", confirmed]
 
 
 def test_binance_spot_uses_correct_endpoint_and_filters_open_candle():
@@ -59,32 +59,35 @@ def test_binance_spot_uses_correct_endpoint_and_filters_open_candle():
     assert result[-1]["close"] == 101.0
 
 
-def test_bybit_linear_uses_v5_endpoint_and_normalizes_reverse_order():
+def test_okx_usdt_swap_uses_public_endpoint_and_normalizes_reverse_order():
     session = FakeSession({
-        "retCode": 0,
-        "retMsg": "OK",
-        "result": {"list": [
-            bybit_candle(1_700_003_600_000),
-            bybit_candle(1_700_000_000_000),
-        ]},
+        "code": "0",
+        "msg": "",
+        "data": [
+            okx_candle(1_700_003_600_000),
+            okx_candle(1_700_000_000_000),
+        ],
     })
     result = fetch_completed_candles(
         "futures", "BTCUSDT", "1h", 2, session=session, now_ms=1_700_004_000_000,
     )
     assert session.url == FUTURES_KLINES_URL
-    assert session.params["category"] == "linear"
-    assert session.params["interval"] == "60"
+    assert session.params["instId"] == "BTC-USDT-SWAP"
+    assert session.params["bar"] == "1Hutc"
     assert len(result) == 2
     assert result[0]["timestamp"] < result[1]["timestamp"]
 
 
-def test_bybit_filters_current_unclosed_candle():
+def test_okx_uses_confirm_flag_to_exclude_unclosed_candle():
     session = FakeSession({
-        "retCode": 0,
-        "result": {"list": [bybit_candle(1_700_003_600_000), bybit_candle(1_700_000_000_000)]},
+        "code": "0",
+        "data": [
+            okx_candle(1_700_003_600_000, confirmed="0"),
+            okx_candle(1_700_000_000_000, confirmed="1"),
+        ],
     })
     result = fetch_completed_candles(
-        "futures", "BTCUSDT", "1h", 2, session=session, now_ms=1_700_003_700_000,
+        "futures", "BTCUSDT", "1h", 2, session=session, now_ms=1_800_000_000_000,
     )
     assert len(result) == 1
 
@@ -115,9 +118,9 @@ def test_rejects_inconsistent_ohlc():
         )
 
 
-def test_rejects_bybit_api_error():
-    session = FakeSession({"retCode": 10001, "retMsg": "Invalid symbol", "result": {}})
-    with pytest.raises(ValueError, match="API error 10001"):
+def test_rejects_okx_api_error():
+    session = FakeSession({"code": "51001", "msg": "Instrument ID does not exist", "data": []})
+    with pytest.raises(ValueError, match="API error 51001"):
         fetch_completed_candles(
             "futures", "BTCUSDT", session=session, now_ms=1_800_000_000_000
         )
