@@ -66,3 +66,10 @@ The scheduled GitHub Actions workflow runs every four hours and stores a JSON sn
 Volume fields preserve their source units: Binance Spot `volume` is base-asset quantity, while OKX swap `volume` is contract count. The collector also records `base_volume` and `quote_volume` (USDT) separately so cross-market volume comparisons can use a common quote-currency measure rather than mixing contracts and coins.
 
 Official endpoint reference: [OKX V5 API – Candlesticks](https://www.okx.com/docs-v5/en/#rest-api-market-data-get-candlesticks).
+
+
+## Multi-market technical analysis (research only)
+
+The public market worker also writes `data/market_analysis_latest.json` alongside the raw candle snapshot. It calculates EMA20/EMA50 trend structure, RSI14, 24-hour momentum and ATR14 volatility independently for each Spot and perpetual-swap dataset, then compares the directional research bias for each matched symbol.
+
+The score is an explainable heuristic, not a probability, forecast guarantee, or buy/sell instruction. Spot and perpetual results are kept separate; a disagreement is labelled as divergence rather than averaged away. Insufficient or malformed candle histories are reported as analysis failures. The report explicitly sets `live_trading_enabled: false` and contains no order instructions. Both the raw snapshot and analysis report are uploaded as a seven-day Actions artifact.
