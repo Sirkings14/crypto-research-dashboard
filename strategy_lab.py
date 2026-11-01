@@ -23,6 +23,7 @@ from market_data import fetch_ohlcv
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "data" / "experiments.sqlite3"
+MAX_GRID_BARS = 100_000
 
 
 def strategy_grid() -> list[dict]:
@@ -252,6 +253,12 @@ with st.sidebar:
     max_dd = st.slider("Validation drawdown ceiling (%)", 2., 80., 25., 1.)
 
 if source == "Binance public Spot":
+    interval_seconds_map = {"1m": 60, "3m": 180, "5m": 300, "15m": 900,
+                            "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400}
+    estimated_bars = days * 86400 / interval_seconds_map[interval]
+    if estimated_bars > MAX_GRID_BARS:
+        st.error(f"This search is capped at {MAX_GRID_BARS:,} bars for a responsive 1,000+ strategy run. Reduce lookback or use a slower interval.")
+        st.stop()
     try:
         with st.spinner("Loading completed public candles…"):
             frame = fetch_ohlcv(symbol, interval, days)
@@ -270,6 +277,9 @@ else:
         st.error(str(exc))
         st.stop()
 
+if len(frame) > MAX_GRID_BARS:
+    st.error(f"This search is capped at {MAX_GRID_BARS:,} bars for a responsive 1,000+ strategy run. Upload a smaller sample.")
+    st.stop()
 frame = frame.copy()
 frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
 data_hash = hashlib.sha256(raw).hexdigest()
