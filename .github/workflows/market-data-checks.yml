@@ -8,6 +8,7 @@ on:
       - "market_universe_worker.py"
       - "tests/test_market_universe.py"
       - ".github/workflows/market-data-checks.yml"
+      - ".github/workflows/market-universe-scan.yml"
   pull_request:
     branches: [main]
     paths:
@@ -15,6 +16,7 @@ on:
       - "market_universe_worker.py"
       - "tests/test_market_universe.py"
       - ".github/workflows/market-data-checks.yml"
+      - ".github/workflows/market-universe-scan.yml"
 
 permissions:
   contents: read
