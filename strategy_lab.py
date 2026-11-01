@@ -287,13 +287,13 @@ if result is not None:
             split = int(len(frame) * .80)
             interval_seconds = float(frame["timestamp"].diff().dt.total_seconds().median())
             holdout = metrics(equity, returns, target, split, len(frame), interval_seconds)
-            st.session_state["holdout_result"] = {"cfg": cfg, "metrics": holdout, "data_hash": data_hash}
+            st.session_state["holdout_result"] = {"cfg": cfg, "metrics": holdout, "data_hash": data_hash, "equity": equity.copy()}
     holdout = st.session_state.get("holdout_result")
     if holdout and holdout["data_hash"] == data_hash:
         st.subheader("Frozen holdout result")
         st.write(holdout["cfg"])
         st.json(holdout["metrics"])
-        chart = go.Figure(go.Scatter(x=frame["timestamp"], y=equity, name="Strategy equity"))
-        chart.update_layout(height=360, xaxis_title="UTC", yaxis_title="Equity multiple")
+        chart = go.Figure(go.Scatter(x=frame["timestamp"], y=holdout["equity"] * initial, name="Strategy equity"))
+        chart.update_layout(height=360, xaxis_title="UTC", yaxis_title="Simulated equity (USDT)")
         st.plotly_chart(chart, use_container_width=True)
         st.caption("This holdout is now consumed. Using it to change the strategy turns it into development data.")
