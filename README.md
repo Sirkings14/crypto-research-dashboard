@@ -73,3 +73,8 @@ Official endpoint reference: [OKX V5 API – Candlesticks](https://www.okx.com/d
 The public market worker also writes `data/market_analysis_latest.json` alongside the raw candle snapshot. It calculates EMA20/EMA50 trend structure, RSI14, 24-hour momentum and ATR14 volatility independently for each Spot and perpetual-swap dataset, then compares the directional research bias for each matched symbol.
 
 The score is an explainable heuristic, not a probability, forecast guarantee, or buy/sell instruction. Spot and perpetual results are kept separate; a disagreement is labelled as divergence rather than averaged away. Insufficient or malformed candle histories are reported as analysis failures. The report explicitly sets `live_trading_enabled: false` and contains no order instructions. Both the raw snapshot and analysis report are uploaded as a seven-day Actions artifact.
+
+
+### Perpetual funding context
+
+For each OKX USDT perpetual market, the collector separately requests the public current funding-rate endpoint. It records the current and next published rates, settlement timestamps, formula type and observation time when available. This is a live snapshot, not a historical funding series or a guarantee of the next settlement rate. Funding is exposed in the analysis report as context only and is deliberately excluded from the technical research score until a separately validated funding-aware model and historical dataset exist. If the funding endpoint fails, candle collection and technical analysis continue and the funding error is recorded.
