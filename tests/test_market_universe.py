@@ -3,11 +3,13 @@ from __future__ import annotations
 import pytest
 
 from market_universe import (
+    FUTURES_FUNDING_HISTORY_URL,
     FUTURES_FUNDING_URL,
     FUTURES_KLINES_URL,
     SPOT_KLINES_URL,
     fetch_completed_candles,
     fetch_current_funding_rate,
+    fetch_funding_rate_history,
 )
 
 
@@ -167,3 +169,32 @@ def test_okx_funding_rejects_malformed_rate():
     })
     with pytest.raises(ValueError, match="invalid funding fields"):
         fetch_current_funding_rate("BTCUSDT", session=session)
+
+
+
+def test_okx_funding_history_is_sorted_and_keeps_realized_rate_distinct():
+    session = FakeSession({
+        "code": "0",
+        "data": [
+            {"fundingTime": "1700028800000", "fundingRate": "0.0002",
+             "realizedRate": "0.00019", "formulaType": "withRate", "method": "current_period"},
+            {"fundingTime": "1700000000000", "fundingRate": "0.0001",
+             "realizedRate": "0.00009", "formulaType": "withRate", "method": "current_period"},
+        ],
+    })
+    result = fetch_funding_rate_history("BTCUSDT", limit=2, session=session)
+    assert session.url == FUTURES_FUNDING_HISTORY_URL
+    assert session.params == {"instId": "BTC-USDT-SWAP", "limit": 2}
+    assert result[0]["funding_time_ms"] == 1700000000000
+    assert result[0]["predicted_rate"] == pytest.approx(0.0001)
+    assert result[0]["realized_rate"] == pytest.approx(0.00009)
+    assert result[0]["is_realized"] is True
+
+
+def test_okx_funding_history_rejects_invalid_realized_rate():
+    session = FakeSession({
+        "code": "0",
+        "data": [{"fundingTime": "1700000000000", "realizedRate": "nan"}],
+    })
+    with pytest.raises(ValueError, match="invalid record"):
+        fetch_funding_rate_history("BTCUSDT", session=session)
