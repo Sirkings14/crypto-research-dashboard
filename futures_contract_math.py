@@ -7,7 +7,6 @@ instrument metadata; unsupported contract conventions fail closed.
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
-from math import isfinite
 from typing import Any
 
 
@@ -21,7 +20,7 @@ def _positive_decimal(value: Any, field: str) -> Decimal:
     return parsed
 
 
-def _instrument_values(metadata: dict[str, Any]) -> tuple[Decimal, Decimal, Decimal, str]:
+def _instrument_values(metadata: dict[str, Any]) -> tuple[Decimal, Decimal, Decimal, str, Decimal]:
     if not isinstance(metadata, dict):
         raise ValueError("instrument metadata must be an object")
     if metadata.get("instrument_type") != "SWAP":
