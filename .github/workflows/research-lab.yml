@@ -7,6 +7,8 @@ on:
       - "strategy_lab.py"
       - "strategy_engine.py"
       - "paper_portfolio_worker.py"
+      - "futures_contract_math.py"
+      - "futures_paper_ledger.py"
       - "tests/**"
       - ".github/workflows/research-lab.yml"
       - "requirements.txt"
@@ -15,6 +17,8 @@ on:
     paths:
       - "strategy_lab.py"
       - "strategy_engine.py"
+      - "futures_contract_math.py"
+      - "futures_paper_ledger.py"
       - "tests/**"
       - ".github/workflows/research-lab.yml"
       - "requirements.txt"
@@ -32,5 +36,5 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --disable-pip-version-check -r requirements.txt pytest
-      - run: python -m py_compile app.py strategy_lab.py strategy_engine.py paper_portfolio_worker.py
+      - run: python -m py_compile app.py strategy_lab.py strategy_engine.py paper_portfolio_worker.py futures_contract_math.py futures_paper_ledger.py
       - run: python -m pytest -q
