@@ -187,18 +187,20 @@ def run_futures_portfolio_replay(
                 replayed[symbol]["equity_curve"][index]["equity_usdt"]
                 for symbol in symbols
             )
-            total_exposure = 0.0
-            for symbol in symbols:
-                point = replayed[symbol]["equity_curve"][index]
-                if point["contracts"]:
-                    total_exposure += point["contracts"] * contract_notional_usdt(
-                        markets[symbol]["instrument_metadata"], point["mark_price"]
-                    )
+            total_open_exposure = sum(
+                replayed[symbol]["equity_curve"][index]["gross_notional_open_usdt"]
+                for symbol in symbols
+            )
+            total_close_exposure = sum(
+                replayed[symbol]["equity_curve"][index]["gross_notional_usdt"]
+                for symbol in symbols
+            )
             curve.append({
                 "timestamp": timestamp,
                 "equity_usdt": total_equity,
-                "gross_notional_usdt": total_exposure,
-                "gross_exposure_pct_of_starting_equity": total_exposure / initial * 100.0,
+                "gross_notional_open_usdt": total_open_exposure,
+                "gross_notional_usdt": total_close_exposure,
+                "gross_exposure_pct_of_starting_equity": total_close_exposure / initial * 100.0,
             })
         return curve
 
@@ -211,6 +213,8 @@ def run_futures_portfolio_replay(
         baseline_timestamps[0].replace("Z", "+00:00")
     ).astimezone(timezone.utc).date()
     breaker_index = None
+    breaker_exit_index = None
+    breaker_execution = None
     breaker_reason = None
     breaker_metrics = None
     max_portfolio_drawdown = 0.0
@@ -227,17 +231,41 @@ def run_futures_portfolio_replay(
         drawdown_pct = max(0.0, (peak - equity) / peak * 100.0)
         max_portfolio_drawdown = max(max_portfolio_drawdown, drawdown_pct)
         gross_notional = point["gross_notional_usdt"]
+        open_gross_notional = point["gross_notional_open_usdt"]
         if daily_loss_pct >= max_daily_loss_pct:
             breaker_index, breaker_reason = index, "portfolio_daily_loss_limit"
+            breaker_exit_index = min(index + 1, len(baseline_timestamps) - 1)
+            breaker_execution = (
+                "next_candle_open" if index < len(baseline_timestamps) - 1
+                else "final_candle_close"
+            )
         elif drawdown_pct >= max_drawdown_pct:
             breaker_index, breaker_reason = index, "portfolio_max_drawdown_limit"
-        elif gross_notional > cap_total + 1e-7:
+            breaker_exit_index = min(index + 1, len(baseline_timestamps) - 1)
+            breaker_execution = (
+                "next_candle_open" if index < len(baseline_timestamps) - 1
+                else "final_candle_close"
+            )
+        elif open_gross_notional > cap_total + 1e-7:
+            # A gap or new entry can breach the cap at this candle's open.
+            # The second pass forces all sleeves flat at this same open.
             breaker_index, breaker_reason = index, "portfolio_gross_exposure_limit"
+            breaker_exit_index = index
+            breaker_execution = "same_candle_open"
+        elif gross_notional > cap_total + 1e-7:
+            # A completed close breach is acted on at the next available open.
+            breaker_index, breaker_reason = index, "portfolio_gross_exposure_limit"
+            breaker_exit_index = min(index + 1, len(baseline_timestamps) - 1)
+            breaker_execution = (
+                "next_candle_open" if index < len(baseline_timestamps) - 1
+                else "final_candle_close"
+            )
         if breaker_index is not None:
             breaker_metrics = {
                 "daily_loss_pct": daily_loss_pct,
                 "drawdown_pct": drawdown_pct,
                 "equity_usdt": equity,
+                "gross_notional_open_usdt": open_gross_notional,
                 "gross_notional_usdt": gross_notional,
                 "gross_notional_limit_usdt": cap_total,
                 "gross_exposure_pct_of_starting_equity": (
@@ -247,21 +275,20 @@ def run_futures_portfolio_replay(
             break
 
     breaker_triggered = breaker_index is not None
-    breaker_exit_index = (
-        min(breaker_index + 1, len(baseline_timestamps) - 1)
-        if breaker_triggered else None
-    )
     if breaker_triggered:
-        # A breach is known at candle close; flatten every sleeve at the next
-        # candle open. If it occurs on the final candle, the ledger's normal
-        # end-of-replay close already exits at that candle close.
+        # Open breaches are flattened at that same candle open; completed-close
+        # breaches are flattened at the next open. A final-close breach uses
+        # the ledger's normal end-of-replay close because no next open exists.
         overridden = {}
         for symbol in symbols:
             original = markets[symbol]["target_sides"]
-            overridden[symbol] = [
-                side if index <= breaker_index else "flat"
-                for index, side in enumerate(original)
-            ]
+            if breaker_execution == "final_candle_close":
+                overridden[symbol] = list(original)
+            else:
+                overridden[symbol] = [
+                    side if index < breaker_exit_index else "flat"
+                    for index, side in enumerate(original)
+                ]
         results = replay_all(overridden)
     else:
         results = exploratory
@@ -294,11 +321,7 @@ def run_futures_portfolio_replay(
             "coordinated_exit_timestamp": (
                 baseline_timestamps[breaker_exit_index] if breaker_triggered else None
             ),
-            "coordinated_exit_execution": (
-                "next_candle_open"
-                if breaker_triggered and breaker_index < len(baseline_timestamps) - 1
-                else ("final_candle_close" if breaker_triggered else None)
-            ),
+            "coordinated_exit_execution": breaker_execution,
             "metrics_at_detection": breaker_metrics,
             "behavior": "latch permanently; force all sleeves flat at the next candle open (or final candle close if no next candle exists); block all later entries",
             "gross_exposure_limit_usdt": cap_total,
@@ -331,7 +354,7 @@ def run_futures_portfolio_replay(
             "gross_notional_limit": "sum of sleeve caps; cannot exceed starting equity (1x)",
             "timeline": "all symbols require identical candle timestamps",
             "risk_controls": "synchronized portfolio-wide daily-loss, peak-to-trough drawdown, and mark-notional gross-exposure breaker; all sleeves flatten together at next candle open",
-            "gross_exposure_control": "checks combined mark-price notional at every completed candle; if above the configured portfolio cap, all sleeves flatten at the next candle open and entries remain blocked for the rest of the replay; no partial rebalancing or intrabar protection",
+            "gross_exposure_control": "checks combined mark-price notional at every candle open after signal execution and at every completed candle close; an open breach triggers a same-open coordinated flatten, a close breach triggers a next-open flatten, and all later entries are blocked; no partial rebalancing or intrabar protection",
             "cross_margin": "not implemented",
             "portfolio_wide_intraday_loss_guard": "not implemented; checks completed candle marks only",
             "liquidation_model": "not implemented",
