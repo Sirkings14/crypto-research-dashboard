@@ -171,3 +171,34 @@ def test_portfolio_drawdown_breaker_uses_shared_peak_equity():
     assert result["portfolio_risk_breaker"]["reason"] == "portfolio_max_drawdown_limit"
     assert result["portfolio_risk_breaker"]["detection_timestamp"] == stamp(1)
     assert result["portfolio_risk_breaker"]["coordinated_exit_timestamp"] == stamp(2)
+
+
+def test_coordinator_uses_weighted_sizing_and_concentration_caps():
+    result = run_futures_portfolio_replay(
+        markets=two_markets(),
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        allocation_weights={"BTCUSDT": 3, "ETHUSDT": 1},
+        max_symbol_allocation_pct=75,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+    )
+    target = result["portfolio_sizing"]["target_allocations_usdt"]
+    maximum = result["portfolio_sizing"]["maximum_allocations_usdt"]
+    assert target["BTCUSDT"] == pytest.approx(675)
+    assert target["ETHUSDT"] == pytest.approx(325)
+    assert sum(target.values()) == pytest.approx(1_000)
+    assert sum(maximum.values()) == pytest.approx(1_200)
+    assert all(value <= 900 + 1e-8 for value in maximum.values())
+
+
+def test_coordinator_fails_closed_when_minimum_lot_breaks_concentration_cap():
+    with pytest.raises(ValueError, match="concentration cap"):
+        run_futures_portfolio_replay(
+            markets=two_markets(),
+            initial_equity_usdt=2_000,
+            target_total_notional_usdt=1_000,
+            max_total_notional_usdt=1_200,
+            max_symbol_allocation_pct=40,
+        )
