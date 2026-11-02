@@ -16,6 +16,7 @@ from futures_contract_math import (
     contract_notional_usdt,
     estimated_taker_fee_usdt,
     linear_pnl_usdt,
+    validate_linear_usdt_swap_metadata,
 )
 
 
@@ -109,11 +110,16 @@ def run_futures_paper_replay(
     into the timestamp. Exposure is fixed-notional and capped; there is no
     leverage, margin, or liquidation simulation.
     """
-    if not isinstance(symbol, str) or not symbol:
-        raise ValueError("symbol is required")
-    expected_instrument = f"{symbol[:-4]}-USDT-SWAP" if symbol.endswith("USDT") else None
+    if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum() or not symbol.isupper():
+        raise ValueError("symbol must be an uppercase USDT-quoted pair")
+    if not isinstance(instrument_metadata, dict):
+        raise ValueError("instrument metadata must be an object")
+    validate_linear_usdt_swap_metadata(instrument_metadata)
+    expected_instrument = f"{symbol[:-4]}-USDT-SWAP"
     if instrument_metadata.get("instrument") != expected_instrument:
         raise ValueError("instrument metadata does not match the requested symbol")
+    if str(instrument_metadata.get("contract_value_currency", "")).upper() not in {symbol[:-4], "USDT"}:
+        raise ValueError("contract value currency is not supported for the requested symbol")
     trades, marks, stamps = _validate_candles(trade_candles, mark_candles)
     if not isinstance(target_sides, list) or len(target_sides) != len(trades):
         raise ValueError("target_sides must have one signal per candle")
