@@ -9,6 +9,8 @@ on:
       - "market_analysis.py"
       - "funding_replay.py"
       - "futures_contract_math.py"
+      - "futures_paper_ledger.py"
+      - "tests/test_futures_paper_ledger.py"
       - "tests/test_futures_contract_math.py"
       - "tests/test_market_universe.py"
       - "tests/test_market_analysis.py"
@@ -47,6 +49,6 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt pytest
       - name: Compile market modules
-        run: python -m py_compile market_universe.py market_universe_worker.py market_analysis.py funding_replay.py futures_contract_math.py
+        run: python -m py_compile market_universe.py market_universe_worker.py market_analysis.py funding_replay.py futures_contract_math.py futures_paper_ledger.py
       - name: Run the full repository test suite
         run: python -m pytest -q
