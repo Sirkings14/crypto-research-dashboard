@@ -143,6 +143,7 @@ def run_futures_paper_replay(
     funding_by_time: dict[datetime, float] = {}
     previous_funding_time = None
     excluded_unrealized = 0
+    excluded_outside_window = 0
     for record in funding_history:
         if not isinstance(record, dict):
             raise ValueError("funding records must be objects")
@@ -160,6 +161,9 @@ def run_futures_paper_replay(
         if previous_funding_time is not None and stamp <= previous_funding_time:
             raise ValueError("funding history must be strictly chronological")
         previous_funding_time = stamp
+        if stamp < stamps[0] or stamp > stamps[-1]:
+            excluded_outside_window += 1
+            continue
         if stamp in funding_by_time:
             raise ValueError("duplicate funding settlement timestamp")
         funding_by_time[stamp] = rate_value
@@ -310,6 +314,7 @@ def run_futures_paper_replay(
         "trade_event_count": len(trades_log),
         "funding_settlement_count": len(funding_log),
         "excluded_unrealized_funding_records": excluded_unrealized,
+        "excluded_funding_outside_replay_window": excluded_outside_window,
         "max_drawdown_pct": max_dd,
         "risk_entries_blocked": risk_blocked,
         "risk_block_reason": risk_block_reason,
