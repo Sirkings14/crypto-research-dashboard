@@ -46,6 +46,12 @@ def _instrument_values(metadata: dict[str, Any]) -> tuple[Decimal, Decimal, Deci
     return contract_value, lot_size, minimum, currency, multiplier
 
 
+def validate_linear_usdt_swap_metadata(metadata: dict[str, Any]) -> bool:
+    """Validate supported instrument metadata without opening a position."""
+    _instrument_values(metadata)
+    return True
+
+
 def contract_notional_usdt(metadata: dict[str, Any], mark_price: float) -> float:
     """Return USDT notional represented by one contract at a mark price."""
     value, _, _, currency, multiplier = _instrument_values(metadata)
