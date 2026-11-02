@@ -312,3 +312,40 @@ def test_portfolio_exposure_open_gap_flattens_at_same_candle_open():
             trade["action"] == "open" and trade["timestamp"] == stamp(1)
             for trade in result["per_symbol"][symbol]["trades"]
         )
+
+
+
+def test_coordinator_handles_full_seven_market_universe_under_shared_cap():
+    specifications = {
+        "BTCUSDT": (0.01, "BTC", 60_000),
+        "ETHUSDT": (0.1, "ETH", 3_000),
+        "BNBUSDT": (1, "BNB", 500),
+        "SOLUSDT": (1, "SOL", 150),
+        "XRPUSDT": (100, "XRP", 0.5),
+        "ADAUSDT": (100, "ADA", 0.4),
+        "DOGEUSDT": (1_000, "DOGE", 0.1),
+    }
+    markets = {}
+    for symbol, (contract_value, currency, price) in specifications.items():
+        markets[symbol] = market(
+            symbol, contract_value, currency,
+            [(price, price), (price, price), (price, price)],
+            ["long", "long", "flat"],
+        )
+
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=10_000,
+        target_total_notional_usdt=4_000,
+        max_total_notional_usdt=5_000,
+        max_symbol_allocation_pct=50,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+    )
+
+    assert result["market_count"] == 7
+    assert set(result["symbols"]) == set(specifications)
+    assert sum(result["portfolio_sizing"]["target_allocations_usdt"].values()) == pytest.approx(4_000)
+    assert sum(result["portfolio_sizing"]["maximum_allocations_usdt"].values()) == pytest.approx(5_000)
+    assert result["maximum_observed_gross_notional_usdt"] <= 5_000
+    assert result["live_trading_enabled"] is False
