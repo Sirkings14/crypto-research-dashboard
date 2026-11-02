@@ -1,10 +1,9 @@
 """Ring-fenced multi-symbol Futures paper portfolio coordinator.
 
-This v1 coordinator splits one portfolio budget into equal, independent
-capital sleeves and runs the validated single-instrument ledger for each.
-It enforces a shared aggregate notional ceiling by construction, requires
-identical candle timelines, and aggregates equity/exposure. It is not a
-cross-margin account or a unified intraday risk engine.
+This v1 coordinator funds each instrument's minimum valid contract lot first,
+then allocates remaining portfolio notional across independent capital sleeves.
+It requires identical candle timelines and aggregates equity/exposure. It is
+not a cross-margin account or a unified intraday risk engine.
 """
 from __future__ import annotations
 
@@ -41,14 +40,13 @@ def run_futures_portfolio_replay(
     max_daily_loss_pct: float = 3.0,
     max_drawdown_pct: float = 10.0,
 ) -> dict[str, Any]:
-    """Replay several instruments with equal ring-fenced capital/notional sleeves.
+    """Replay several instruments with minimum-lot-aware ring-fenced allocations.
 
     Each market value must contain trade_candles, mark_candles, funding_history,
     instrument_metadata and target_sides. All markets must share the exact same
-    candle timestamps. Each sleeve receives 1/N of initial equity and both
-    target and maximum notional. Thus the sum of all sleeve caps cannot exceed
-    max_total_notional_usdt, and the aggregate cap cannot exceed portfolio
-    starting equity (a conservative 1x gross-notional ceiling).
+    candle timestamps. Initial equity is split equally; minimum valid contract
+    notionals are funded first, then remaining target/cap is split equally.
+    The aggregate cap cannot exceed starting equity (a 1x gross-notional ceiling).
     """
     if not isinstance(markets, dict) or not markets:
         raise ValueError("markets must be a non-empty symbol-to-market mapping")
@@ -148,8 +146,8 @@ def run_futures_portfolio_replay(
         item = markets[symbol]
         results[symbol] = run_futures_paper_replay(
             symbol=symbol,
-            trade_candles=trades,
-            mark_candles=marks,
+            trade_candles=item["trade_candles"],
+            mark_candles=item["mark_candles"],
             funding_history=item["funding_history"],
             instrument_metadata=item["instrument_metadata"],
             target_sides=item["target_sides"],
@@ -215,7 +213,7 @@ def run_futures_portfolio_replay(
         "per_symbol": results,
         "portfolio_equity_curve": portfolio_curve,
         "assumptions": {
-            "allocation": "equal, ring-fenced capital sleeves",
+            "allocation": "ring-fenced capital sleeves with minimum contract lots funded first",
             "sleeve_initial_equity_usdt": sleeve_equity,
             "allocation_method": "minimum valid contract lot per market, then equal split of remaining budget",
             "minimum_notional_by_symbol_usdt": minimum_notionals,
