@@ -5,10 +5,12 @@ import pytest
 from market_universe import (
     FUTURES_FUNDING_HISTORY_URL,
     FUTURES_INSTRUMENTS_URL,
+    MARK_PRICE_CANDLES_URL,
     FUTURES_FUNDING_URL,
     FUTURES_KLINES_URL,
     SPOT_KLINES_URL,
     fetch_completed_candles,
+    fetch_completed_mark_price_candles,
     fetch_current_funding_rate,
     fetch_funding_rate_history,
     fetch_swap_instrument_metadata,
@@ -236,3 +238,37 @@ def test_okx_swap_metadata_rejects_inverse_contracts():
     })
     with pytest.raises(ValueError, match="linear USDT-settled"):
         fetch_swap_instrument_metadata("BTCUSDT", session=session)
+
+
+
+def mark_price_candle(open_ms: int, *, close: str = "101", confirmed: str = "1"):
+    return [str(open_ms), "100", "105", "99", close, confirmed]
+
+
+def test_okx_mark_price_candles_are_normalized_and_unclosed_rows_filtered():
+    session = FakeSession({
+        "code": "0",
+        "data": [
+            mark_price_candle(1_700_003_600_000, confirmed="0"),
+            mark_price_candle(1_700_000_000_000, confirmed="1"),
+        ],
+    })
+    result = fetch_completed_mark_price_candles(
+        "BTCUSDT", "1h", 2, session=session, now_ms=1_800_000_000_000,
+    )
+    assert session.url == MARK_PRICE_CANDLES_URL
+    assert session.params == {"instId": "BTC-USDT-SWAP", "bar": "1H", "limit": 2}
+    assert len(result) == 1
+    assert result[0]["close"] == 101.0
+    assert result[0]["timestamp"].endswith("+00:00")
+
+
+def test_okx_mark_price_candles_reject_inconsistent_ohlc():
+    session = FakeSession({
+        "code": "0",
+        "data": [["1700000000000", "100", "100", "99", "101", "1"]],
+    })
+    with pytest.raises(ValueError, match="inconsistent OHLC"):
+        fetch_completed_mark_price_candles(
+            "BTCUSDT", "1h", 2, session=session, now_ms=1_800_000_000_000,
+        )
