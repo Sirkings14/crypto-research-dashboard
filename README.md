@@ -88,3 +88,7 @@ The collector also retrieves up to 100 recent funding-history records per swap. 
 ### Perpetual contract metadata
 
 For each OKX USDT swap, the collector also reads public instrument metadata: contract type/value and value currency, settlement currency, contract lot increment, minimum contract size, tick size, exchange leverage ceiling, instrument state and any upcoming sizing-rule changes. Only linear USDT-settled swaps are accepted by this metadata parser. The exchange leverage ceiling is informational and is never used to configure leverage or open a position. Contract size fields are retained so a later paper engine can size in contracts rather than incorrectly treating contract counts as coin quantities.
+
+### Mark-price history for risk research
+
+The collector also requests up to 100 completed hourly mark-price candles for each perpetual swap. These are kept separate from the trade-price candles and are not substituted for them. Mark-price candles provide the reference series needed for a later, more realistic unrealized-PnL and liquidation-risk paper model; missing mark-price data is reported separately and must block any risk-sensitive simulation for that market. OKX limits this endpoint to 100 rows per request.
