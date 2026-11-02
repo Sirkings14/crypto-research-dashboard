@@ -22,6 +22,7 @@ on:
       - "futures_contract_math.py"
       - "futures_paper_ledger.py"
       - "futures_signal_adapter.py"
+      - "futures_portfolio_coordinator.py"
       - "tests/**"
       - ".github/workflows/research-lab.yml"
       - "requirements.txt"
