@@ -145,6 +145,8 @@ def analyze_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
             if record.get("realized_rate") is not None
         ),
         "funding_history_error": dataset.get("funding_history_error"),
+        "instrument_metadata": dataset.get("instrument_metadata"),
+        "instrument_metadata_error": dataset.get("instrument_metadata_error"),
         "funding_included_in_research_score": False,
         "signal_is_probability": False,
         "order_instruction": None,
