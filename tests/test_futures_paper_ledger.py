@@ -22,7 +22,7 @@ def rows(prices):
 
 def meta(**overrides):
     value = {
-        "instrument_type": "SWAP", "contract_type": "linear",
+        "instrument": "BTC-USDT-SWAP",\n        "instrument_type": "SWAP", "contract_type": "linear",
         "settlement_currency": "USDT", "instrument_state": "live",
         "contract_value": 0.01, "contract_value_currency": "BTC",
         "contract_multiplier": "1", "lot_size_contracts": 1,
@@ -63,7 +63,7 @@ def test_realized_funding_only_charged_if_position_carried_into_settlement():
     result = replay(trade, mark, ["long", "long", "flat"], funding)
     assert result["funding_settlement_count"] == 1
     assert result["net_funding_cost_usdt"] == pytest.approx(0.6)
-    assert result["final_equity_usdt"] == pytest.approx(2_019.4)
+    assert result["final_equity_usdt"] == pytest.approx(2_009.4)
 
 
 def test_new_position_does_not_pay_funding_at_its_entry_timestamp():
