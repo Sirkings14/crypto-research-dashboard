@@ -22,7 +22,8 @@ def rows(prices):
 
 def meta(**overrides):
     value = {
-        "instrument": "BTC-USDT-SWAP",\n        "instrument_type": "SWAP", "contract_type": "linear",
+        "instrument": "BTC-USDT-SWAP",
+        "instrument_type": "SWAP", "contract_type": "linear",
         "settlement_currency": "USDT", "instrument_state": "live",
         "contract_value": 0.01, "contract_value_currency": "BTC",
         "contract_multiplier": "1", "lot_size_contracts": 1,
@@ -105,6 +106,7 @@ def test_rejects_funding_timestamp_not_on_candle_boundary():
 def test_rejects_gaps_and_bad_signals():
     trade, mark = rows([(60_000, 60_000), (60_000, 60_000), (60_000, 60_000)])
     trade[2]["timestamp"] = stamp(4)
+    mark[2]["timestamp"] = stamp(4)
     with pytest.raises(ValueError, match="gaps"):
         replay(trade, mark, ["long", "flat", "flat"])
     trade, mark = rows([(60_000, 60_000), (60_000, 60_000)])
