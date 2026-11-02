@@ -141,3 +141,10 @@ This is a synchronized candle-level emergency flatten, not partial portfolio reb
 ## Adversarial Futures portfolio stress checks
 
 `tests/test_futures_portfolio_stress.py` adds deterministic adverse scenarios across multiple simultaneous sleeves: a correlated cross-asset price shock, simultaneous realized funding debits, and invalid mark-price reference data. The tests verify that portfolio loss controls coordinate exits across symbols and that invalid risk inputs stop the replay instead of being silently accepted. These tests validate accounting and safety behavior under selected scenarios; they do not establish strategy profitability, cover every market regime, or replace exchange-specific margin and liquidation simulation.
+
+
+## Isolated Futures margin and liquidation estimate (research only)
+
+`futures_margin_model.py` adds a standalone calculator for a single linear USDT perpetual position under an explicitly supplied isolated-margin amount, maintenance-margin rate, liquidation-fee reserve rate, and net accrued costs. It computes mark-to-market P&L, margin equity, maintenance requirement, remaining equity buffer, effective leverage, and an estimated liquidation threshold for long and short positions. Positive accrued costs reduce margin equity; funding credits can be represented as negative costs.
+
+This is intentionally not wired into the existing 1x portfolio replay yet. It uses one constant maintenance rate supplied by the caller; it does not fetch or infer exchange maintenance tiers, and it does not simulate partial liquidation, cross margin, insurance funds, ADL, intrabar price paths, exchange-specific bankruptcy prices, or actual liquidation execution. The estimate is useful for controlled unit tests and scenario analysis only. Before integration or any leverage conclusions, the model must be calibrated against the selected exchange's official contract-specific margin and liquidation rules. Live trading remains disabled.
