@@ -138,3 +138,36 @@ def test_portfolio_daily_loss_breaker_flattens_all_symbols_and_blocks_reentry():
         )
         assert result["per_symbol"][symbol]["equity_curve"][-1]["position_side"] == "flat"
     assert result["live_trading_enabled"] is False
+
+
+def test_portfolio_drawdown_breaker_uses_shared_peak_equity():
+    markets = two_markets()
+    for symbol, prices in {
+        "BTCUSDT": [(60_000, 60_000), (60_000, 54_000), (54_000, 54_000)],
+        "ETHUSDT": [(3_000, 3_000), (3_000, 2_700), (2_700, 2_700)],
+    }.items():
+        markets[symbol]["trade_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        markets[symbol]["mark_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        markets[symbol]["target_sides"] = ["long", "long", "long"]
+
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+        max_daily_loss_pct=50,
+        max_drawdown_pct=4,
+    )
+
+    assert result["portfolio_risk_breaker"]["triggered"] is True
+    assert result["portfolio_risk_breaker"]["reason"] == "portfolio_max_drawdown_limit"
+    assert result["portfolio_risk_breaker"]["detection_timestamp"] == stamp(1)
+    assert result["portfolio_risk_breaker"]["coordinated_exit_timestamp"] == stamp(2)
