@@ -4,12 +4,14 @@ import pytest
 
 from market_universe import (
     FUTURES_FUNDING_HISTORY_URL,
+    FUTURES_INSTRUMENTS_URL,
     FUTURES_FUNDING_URL,
     FUTURES_KLINES_URL,
     SPOT_KLINES_URL,
     fetch_completed_candles,
     fetch_current_funding_rate,
     fetch_funding_rate_history,
+    fetch_swap_instrument_metadata,
 )
 
 
@@ -198,3 +200,39 @@ def test_okx_funding_history_rejects_invalid_realized_rate():
     })
     with pytest.raises(ValueError, match="invalid record"):
         fetch_funding_rate_history("BTCUSDT", session=session)
+
+
+
+def test_okx_linear_swap_metadata_preserves_contract_sizing_units():
+    session = FakeSession({
+        "code": "0",
+        "data": [{
+            "instId": "BTC-USDT-SWAP", "instType": "SWAP",
+            "ctType": "linear", "ctVal": "0.01", "ctValCcy": "BTC",
+            "ctMult": "1", "settleCcy": "USDT", "lotSz": "1",
+            "minSz": "1", "tickSz": "0.1", "lever": "100",
+            "state": "live", "upcChg": [],
+        }],
+    })
+    result = fetch_swap_instrument_metadata("BTCUSDT", session=session)
+    assert session.url == FUTURES_INSTRUMENTS_URL
+    assert session.params == {"instType": "SWAP", "instId": "BTC-USDT-SWAP"}
+    assert result["contract_type"] == "linear"
+    assert result["contract_value"] == pytest.approx(0.01)
+    assert result["contract_value_currency"] == "BTC"
+    assert result["lot_size_contracts"] == 1
+    assert result["minimum_size_contracts"] == 1
+    assert result["settlement_currency"] == "USDT"
+    assert result["live_trading_enabled"] is False
+
+
+def test_okx_swap_metadata_rejects_inverse_contracts():
+    session = FakeSession({
+        "code": "0",
+        "data": [{
+            "instId": "BTC-USDT-SWAP", "instType": "SWAP",
+            "ctType": "inverse", "settleCcy": "BTC",
+        }],
+    })
+    with pytest.raises(ValueError, match="linear USDT-settled"):
+        fetch_swap_instrument_metadata("BTCUSDT", session=session)
