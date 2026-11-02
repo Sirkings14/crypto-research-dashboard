@@ -3,9 +3,11 @@ from __future__ import annotations
 import pytest
 
 from market_universe import (
+    FUTURES_FUNDING_URL,
     FUTURES_KLINES_URL,
     SPOT_KLINES_URL,
     fetch_completed_candles,
+    fetch_current_funding_rate,
 )
 
 
@@ -129,3 +131,39 @@ def test_rejects_okx_api_error():
         fetch_completed_candles(
             "futures", "BTCUSDT", session=session, now_ms=1_800_000_000_000
         )
+
+
+
+def test_okx_public_funding_rate_is_parsed_as_rate_not_probability():
+    session = FakeSession({
+        "code": "0",
+        "msg": "",
+        "data": [{
+            "instId": "BTC-USDT-SWAP",
+            "fundingRate": "0.0001",
+            "nextFundingRate": "0.0002",
+            "fundingTime": "1700000000000",
+            "nextFundingTime": "1700028800000",
+            "ts": "1699999900000",
+            "formulaType": "withRate",
+            "settState": "settled",
+            "method": "current_period",
+        }],
+    })
+    result = fetch_current_funding_rate("BTCUSDT", session=session)
+    assert session.url == FUTURES_FUNDING_URL
+    assert session.params == {"instId": "BTC-USDT-SWAP"}
+    assert result["funding_rate"] == pytest.approx(0.0001)
+    assert result["funding_rate_pct"] == pytest.approx(0.01)
+    assert result["next_funding_rate_pct"] == pytest.approx(0.02)
+    assert result["formula_type"] == "withRate"
+    assert result["is_historical"] is False
+
+
+def test_okx_funding_rejects_malformed_rate():
+    session = FakeSession({
+        "code": "0",
+        "data": [{"fundingRate": "not-a-number", "fundingTime": "1700000000000"}],
+    })
+    with pytest.raises(ValueError, match="invalid funding fields"):
+        fetch_current_funding_rate("BTCUSDT", session=session)
