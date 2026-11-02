@@ -18,6 +18,7 @@ FUTURES_KLINES_URL = "https://openapi.okx.com/api/v5/market/candles"
 FUTURES_FUNDING_URL = "https://openapi.okx.com/api/v5/public/funding-rate"
 FUTURES_FUNDING_HISTORY_URL = "https://openapi.okx.com/api/v5/public/funding-rate-history"
 FUTURES_INSTRUMENTS_URL = "https://openapi.okx.com/api/v5/public/instruments"
+MARK_PRICE_CANDLES_URL = "https://openapi.okx.com/api/v5/market/mark-price-candles"
 DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT")
 INTERVALS = {
     "5m": ("5m", 300_000), "15m": ("15m", 900_000),
@@ -336,6 +337,75 @@ def fetch_swap_instrument_metadata(
     }
 
 
+
+def fetch_completed_mark_price_candles(
+    symbol: str,
+    interval: str = "1h",
+    limit: int = 100,
+    *,
+    session: requests.Session | None = None,
+    now_ms: int | None = None,
+    retries: int = 3,
+) -> list[dict[str, Any]]:
+    """Fetch completed OKX mark-price OHLC candles for a linear USDT swap."""
+    if not symbol.isalnum() or not symbol.isupper() or not symbol.endswith("USDT"):
+        raise ValueError("symbol must be an uppercase USDT-quoted pair, e.g. BTCUSDT")
+    if interval not in INTERVALS:
+        raise ValueError(f"interval must be one of: {', '.join(INTERVALS)}")
+    if not 2 <= limit <= 100:
+        raise ValueError("mark-price candle limit must be between 2 and 100")
+    if retries < 1 or retries > 5:
+        raise ValueError("retries must be between 1 and 5")
+
+    instrument = f"{symbol[:-4]}-USDT-SWAP"
+    bar, duration_ms = INTERVALS[interval]
+    client = session or requests.Session()
+    client.headers.update({"User-Agent": "CryptoResearchLab/2.2"})
+    current_ms = now_ms if now_ms is not None else int(datetime.now(timezone.utc).timestamp() * 1000)
+    payload = _request_json(
+        client, MARK_PRICE_CANDLES_URL,
+        {"instId": instrument, "bar": bar, "limit": limit}, retries,
+    )
+    if not isinstance(payload, dict) or payload.get("code") != "0":
+        code = payload.get("code") if isinstance(payload, dict) else "invalid_response"
+        message = payload.get("msg", "unexpected response") if isinstance(payload, dict) else "unexpected response"
+        raise ValueError(f"OKX mark price {instrument}: API error {code}: {message}")
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        raise ValueError(f"OKX mark price {instrument}: expected data list")
+
+    candles = []
+    previous_open_ms = -1
+    for row in reversed(rows):
+        if not isinstance(row, list) or len(row) < 6:
+            raise ValueError(f"OKX mark price {instrument}: malformed candle row")
+        try:
+            open_ms = int(row[0])
+            open_price, high, low, close = (float(row[i]) for i in range(1, 5))
+            confirmed = str(row[5]) == "1"
+        except (TypeError, ValueError, IndexError) as exc:
+            raise ValueError(f"OKX mark price {instrument}: invalid candle field") from exc
+        close_ms = open_ms + duration_ms - 1
+        if open_ms <= previous_open_ms:
+            raise ValueError(f"OKX mark price {instrument}: candles are not strictly chronological")
+        previous_open_ms = open_ms
+        if min(open_price, high, low, close) <= 0 or not all(
+            isfinite(value) for value in (open_price, high, low, close)
+        ):
+            raise ValueError(f"OKX mark price {instrument}: invalid OHLC price")
+        if high < max(open_price, close) or low > min(open_price, close):
+            raise ValueError(f"OKX mark price {instrument}: inconsistent OHLC values")
+        if not confirmed or close_ms >= current_ms:
+            continue
+        candles.append({
+            "timestamp": datetime.fromtimestamp(open_ms / 1000, tz=timezone.utc).isoformat(),
+            "open": open_price, "high": high, "low": low, "close": close,
+        })
+    if not candles:
+        raise ValueError(f"OKX mark price {instrument}: no completed candles returned")
+    return candles
+
+
 def scan_universe(
     symbols: tuple[str, ...] = DEFAULT_SYMBOLS,
     interval: str = "1h",
@@ -388,6 +458,16 @@ def scan_universe(
                     except (requests.RequestException, ValueError) as exc:
                         dataset["instrument_metadata"] = None
                         dataset["instrument_metadata_error"] = str(exc)
+                    try:
+                        dataset["mark_price_candles"] = fetch_completed_mark_price_candles(
+                            symbol, interval, limit=min(limit, 100), session=session, now_ms=now_ms
+                        )
+                        dataset["mark_price_candle_count"] = len(dataset["mark_price_candles"])
+                        dataset["mark_price_error"] = None
+                    except (requests.RequestException, ValueError) as exc:
+                        dataset["mark_price_candles"] = []
+                        dataset["mark_price_candle_count"] = 0
+                        dataset["mark_price_error"] = str(exc)
                 results.append(dataset)
             except (requests.RequestException, ValueError) as exc:
                 failures.append({"market": market, "symbol": symbol, "error": str(exc)})
