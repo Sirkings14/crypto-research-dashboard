@@ -1,10 +1,11 @@
 """Ring-fenced multi-symbol Futures paper replay with a portfolio risk breaker.
 
 The coordinator funds each instrument's minimum valid contract lot first,
-then allocates remaining portfolio notional across independent sleeves. A
-synchronized first pass detects portfolio-wide loss/drawdown breaches; a second
-pass latches the breaker and closes all sleeves at the next candle open.
-This remains a research replay, not a cross-margin or liquidation model.
+then uses weighted water-filling to allocate target and maximum notional under
+per-symbol concentration caps. A synchronized first pass detects portfolio-
+wide loss/drawdown breaches; a second pass latches the breaker and closes all
+sleeves at the next candle open. This remains a research replay, not a cross-
+margin or liquidation model.
 """
 from __future__ import annotations
 
@@ -49,8 +50,8 @@ def run_futures_portfolio_replay(
 
     A completed-candle portfolio equity breach is detected on the first pass.
     On the next candle open, every sleeve is forced flat and all later entries
-    are blocked. Initial equity is split equally; minimum contract lots are
-    funded first, then remaining target/cap is split equally.
+    are blocked. Minimum contract lots are funded first; weighted water-filling
+    allocates the remaining target/cap under per-symbol concentration limits.
     """
     if not isinstance(markets, dict) or not markets:
         raise ValueError("markets must be a non-empty symbol-to-market mapping")
