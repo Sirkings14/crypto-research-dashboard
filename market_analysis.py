@@ -137,6 +137,9 @@ def analyze_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
         "research_score": int(score),
         "research_bias": bias,
         "reasons": reasons,
+        "funding_context": dataset.get("funding"),
+        "funding_error": dataset.get("funding_error"),
+        "funding_included_in_research_score": False,
         "signal_is_probability": False,
         "order_instruction": None,
     }
