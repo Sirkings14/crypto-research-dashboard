@@ -108,3 +108,10 @@ This is not yet a full Futures paper-trading worker. The functions fail closed f
 The replay requires trade and mark candles to have identical timestamps and a regular interval. It refuses to approximate a funding settlement that does not align with a candle boundary. It caps notional exposure, rounds contract size down using public instrument metadata, tracks cash/equity/drawdown, and blocks new entries after configured daily-loss or drawdown limits. Any open position is closed at the end of the replay with the configured exit slippage and fee.
 
 This is an accounting/replay module, not yet an automated strategy or scheduled paper account. Signals are inputs; this module does not generate them. The 1x label is a conservative research assumption, not a margin or liquidation simulation. Maintenance margin tiers, liquidation mechanics, exchange-specific fee schedules, variable slippage, intrabar paths and funding mark prices between candle boundaries are not modelled. The engine has no API credentials, account access, or order-placement capability; `live_trading_enabled` remains false.
+
+
+## Futures strategy signal adapter (no-lookahead bridge)
+
+`futures_signal_adapter.py` adapts the existing strategy engine's long/flat boolean output to the Futures replay's per-candle target-side input. It shifts every completed-candle signal forward by one row: the first candle is always flat, and a signal calculated from candle i's close can only become active at candle i+1's open. It validates timestamp ordering/uniqueness and finite positive close prices. The current strategy engine is long/flat only, so this adapter intentionally does not manufacture short signals.
+
+The adapter is a small, testable bridge; it does not yet select or optimize a strategy, coordinate capital across symbols, or run a persistent Futures paper account. It must be paired with trade/mark/funding datasets on the same verified candle timeline. The Futures replay remains research-only and `live_trading_enabled` remains false.
