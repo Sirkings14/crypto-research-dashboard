@@ -81,7 +81,7 @@ def test_fee_and_slippage_reduce_returns():
         symbol="BTCUSDT", trade_candles=trade, mark_candles=mark,
         funding_history=[], instrument_metadata=meta(),
         target_sides=["long", "flat"], initial_equity_usdt=2_000,
-        target_notional_usdt=600, max_notional_usdt=600,
+        target_notional_usdt=700, max_notional_usdt=700,
         taker_fee_bps_per_side=10, slippage_bps_per_side=5,
     )
     assert result["fees_paid_usdt"] > 0
