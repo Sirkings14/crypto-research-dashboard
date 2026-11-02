@@ -16,6 +16,7 @@ import requests
 SPOT_KLINES_URL = "https://data-api.binance.vision/api/v3/klines"
 FUTURES_KLINES_URL = "https://openapi.okx.com/api/v5/market/candles"
 FUTURES_FUNDING_URL = "https://openapi.okx.com/api/v5/public/funding-rate"
+FUTURES_FUNDING_HISTORY_URL = "https://openapi.okx.com/api/v5/public/funding-rate-history"
 DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT")
 INTERVALS = {
     "5m": ("5m", 300_000), "15m": ("15m", 900_000),
@@ -209,6 +210,68 @@ def fetch_current_funding_rate(
     }
 
 
+
+def fetch_funding_rate_history(
+    symbol: str,
+    limit: int = 100,
+    *,
+    session: requests.Session | None = None,
+    retries: int = 3,
+) -> list[dict[str, Any]]:
+    """Fetch recent settled funding observations; predicted rates stay separately labelled."""
+    if not symbol.isalnum() or not symbol.isupper() or not symbol.endswith("USDT"):
+        raise ValueError("symbol must be an uppercase USDT-quoted pair, e.g. BTCUSDT")
+    if not 1 <= limit <= 400:
+        raise ValueError("funding history limit must be between 1 and 400")
+    if retries < 1 or retries > 5:
+        raise ValueError("retries must be between 1 and 5")
+
+    instrument = f"{symbol[:-4]}-USDT-SWAP"
+    client = session or requests.Session()
+    client.headers.update({"User-Agent": "CryptoResearchLab/2.2"})
+    payload = _request_json(
+        client, FUTURES_FUNDING_HISTORY_URL,
+        {"instId": instrument, "limit": limit}, retries,
+    )
+    if not isinstance(payload, dict) or payload.get("code") != "0":
+        code = payload.get("code") if isinstance(payload, dict) else "invalid_response"
+        message = payload.get("msg", "unexpected response") if isinstance(payload, dict) else "unexpected response"
+        raise ValueError(f"OKX funding history {instrument}: API error {code}: {message}")
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        raise ValueError(f"OKX funding history {instrument}: expected data list")
+
+    records = []
+    seen_times = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError(f"OKX funding history {instrument}: malformed record")
+        try:
+            time_ms = int(row["fundingTime"])
+            predicted = float(row["fundingRate"]) if row.get("fundingRate") not in (None, "") else None
+            realized = float(row["realizedRate"]) if row.get("realizedRate") not in (None, "") else None
+            if predicted is not None and not isfinite(predicted):
+                raise ValueError("fundingRate must be finite")
+            if realized is not None and not isfinite(realized):
+                raise ValueError("realizedRate must be finite")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"OKX funding history {instrument}: invalid record: {exc}") from exc
+        if time_ms in seen_times:
+            continue
+        seen_times.add(time_ms)
+        records.append({
+            "funding_time": datetime.fromtimestamp(time_ms / 1000, tz=timezone.utc).isoformat(),
+            "funding_time_ms": time_ms,
+            "predicted_rate": predicted,
+            "realized_rate": realized,
+            "formula_type": row.get("formulaType"),
+            "method": row.get("method"),
+            "is_realized": realized is not None,
+        })
+    records.sort(key=lambda item: item["funding_time_ms"])
+    return records
+
+
 def scan_universe(
     symbols: tuple[str, ...] = DEFAULT_SYMBOLS,
     interval: str = "1h",
@@ -245,6 +308,14 @@ def scan_universe(
                         # Keep candle data usable if the separate funding endpoint is unavailable.
                         dataset["funding"] = None
                         dataset["funding_error"] = str(exc)
+                    try:
+                        dataset["funding_history"] = fetch_funding_rate_history(
+                            symbol, limit=100, session=session
+                        )
+                        dataset["funding_history_error"] = None
+                    except (requests.RequestException, ValueError) as exc:
+                        dataset["funding_history"] = []
+                        dataset["funding_history_error"] = str(exc)
                 results.append(dataset)
             except (requests.RequestException, ValueError) as exc:
                 failures.append({"market": market, "symbol": symbol, "error": str(exc)})
