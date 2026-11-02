@@ -17,6 +17,7 @@ SPOT_KLINES_URL = "https://data-api.binance.vision/api/v3/klines"
 FUTURES_KLINES_URL = "https://openapi.okx.com/api/v5/market/candles"
 FUTURES_FUNDING_URL = "https://openapi.okx.com/api/v5/public/funding-rate"
 FUTURES_FUNDING_HISTORY_URL = "https://openapi.okx.com/api/v5/public/funding-rate-history"
+FUTURES_INSTRUMENTS_URL = "https://openapi.okx.com/api/v5/public/instruments"
 DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT")
 INTERVALS = {
     "5m": ("5m", 300_000), "15m": ("15m", 900_000),
@@ -272,6 +273,69 @@ def fetch_funding_rate_history(
     return records
 
 
+
+def fetch_swap_instrument_metadata(
+    symbol: str,
+    *,
+    session: requests.Session | None = None,
+    retries: int = 3,
+) -> dict[str, Any]:
+    """Fetch public contract sizing constraints for one linear USDT swap."""
+    if not symbol.isalnum() or not symbol.isupper() or not symbol.endswith("USDT"):
+        raise ValueError("symbol must be an uppercase USDT-quoted pair, e.g. BTCUSDT")
+    if retries < 1 or retries > 5:
+        raise ValueError("retries must be between 1 and 5")
+
+    instrument = f"{symbol[:-4]}-USDT-SWAP"
+    client = session or requests.Session()
+    client.headers.update({"User-Agent": "CryptoResearchLab/2.2"})
+    payload = _request_json(
+        client, FUTURES_INSTRUMENTS_URL,
+        {"instType": "SWAP", "instId": instrument}, retries,
+    )
+    if not isinstance(payload, dict) or payload.get("code") != "0":
+        code = payload.get("code") if isinstance(payload, dict) else "invalid_response"
+        message = payload.get("msg", "unexpected response") if isinstance(payload, dict) else "unexpected response"
+        raise ValueError(f"OKX instrument {instrument}: API error {code}: {message}")
+    rows = payload.get("data")
+    if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+        raise ValueError(f"OKX instrument {instrument}: missing instrument metadata")
+    row = rows[0]
+    if row.get("instId") != instrument:
+        raise ValueError(f"OKX instrument metadata mismatch for {instrument}")
+    if row.get("ctType") != "linear" or row.get("settleCcy") != "USDT":
+        raise ValueError(f"OKX instrument {instrument}: expected a linear USDT-settled swap")
+
+    numeric = {}
+    for key in ("ctVal", "lotSz", "minSz", "tickSz"):
+        try:
+            value = float(row[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"OKX instrument {instrument}: invalid {key}") from exc
+        if not isfinite(value) or value <= 0:
+            raise ValueError(f"OKX instrument {instrument}: {key} must be finite and positive")
+        numeric[key] = value
+
+    return {
+        "provider": "okx_public_instruments",
+        "instrument": instrument,
+        "instrument_type": row.get("instType"),
+        "contract_type": row.get("ctType"),
+        "contract_value": numeric["ctVal"],
+        "contract_value_currency": row.get("ctValCcy"),
+        "contract_multiplier": row.get("ctMult"),
+        "settlement_currency": row.get("settleCcy"),
+        "lot_size_contracts": numeric["lotSz"],
+        "minimum_size_contracts": numeric["minSz"],
+        "tick_size": numeric["tickSz"],
+        "exchange_max_leverage_ceiling": row.get("lever"),
+        "instrument_state": row.get("state"),
+        "upcoming_changes": row.get("upcChg", []),
+        "metadata_is_account_specific": False,
+        "live_trading_enabled": False,
+    }
+
+
 def scan_universe(
     symbols: tuple[str, ...] = DEFAULT_SYMBOLS,
     interval: str = "1h",
@@ -316,6 +380,14 @@ def scan_universe(
                     except (requests.RequestException, ValueError) as exc:
                         dataset["funding_history"] = []
                         dataset["funding_history_error"] = str(exc)
+                    try:
+                        dataset["instrument_metadata"] = fetch_swap_instrument_metadata(
+                            symbol, session=session
+                        )
+                        dataset["instrument_metadata_error"] = None
+                    except (requests.RequestException, ValueError) as exc:
+                        dataset["instrument_metadata"] = None
+                        dataset["instrument_metadata_error"] = str(exc)
                 results.append(dataset)
             except (requests.RequestException, ValueError) as exc:
                 failures.append({"market": market, "symbol": symbol, "error": str(exc)})
