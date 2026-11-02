@@ -66,3 +66,18 @@ def test_snapshot_compares_spot_and_swap_without_combining_scores():
         "futures_bias": "bearish", "alignment": "divergent",
     }]
     assert result["live_trading_enabled"] is False
+
+
+
+def test_funding_context_is_reported_but_does_not_change_technical_score():
+    plain = analyze_dataset(make_dataset())
+    with_funding = make_dataset()
+    with_funding["funding"] = {
+        "funding_rate": 0.0001,
+        "funding_rate_pct": 0.01,
+        "is_historical": False,
+    }
+    analyzed = analyze_dataset(with_funding)
+    assert analyzed["research_score"] == plain["research_score"]
+    assert analyzed["funding_context"]["funding_rate_pct"] == 0.01
+    assert analyzed["funding_included_in_research_score"] is False
