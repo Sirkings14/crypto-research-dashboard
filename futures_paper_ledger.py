@@ -306,6 +306,8 @@ def run_futures_paper_replay(
             equity_curve[-1]["cash_usdt"] = cash
             equity_curve[-1]["position_side"] = "flat"
             equity_curve[-1]["contracts"] = 0.0
+            equity_curve[-1]["gross_notional_open_usdt"] = 0.0
+            equity_curve[-1]["gross_notional_usdt"] = 0.0
     else:
         final_equity = cash
 
