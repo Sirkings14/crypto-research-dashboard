@@ -111,6 +111,9 @@ def run_futures_paper_replay(
     """
     if not isinstance(symbol, str) or not symbol:
         raise ValueError("symbol is required")
+    expected_instrument = f"{symbol[:-4]}-USDT-SWAP" if symbol.endswith("USDT") else None
+    if instrument_metadata.get("instrument") != expected_instrument:
+        raise ValueError("instrument metadata does not match the requested symbol")
     trades, marks, stamps = _validate_candles(trade_candles, mark_candles)
     if not isinstance(target_sides, list) or len(target_sides) != len(trades):
         raise ValueError("target_sides must have one signal per candle")
@@ -239,14 +242,14 @@ def run_futures_paper_replay(
             risk_blocked, risk_block_reason = True, "max_drawdown_limit"
 
         if desired_side != "flat" and position is None and not risk_blocked:
+            fill = trade["open"] * (1.0 + slip_bps / 10_000) if desired_side == "long" else trade["open"] * (1.0 - slip_bps / 10_000)
             sizing = contracts_for_notional(
                 instrument_metadata, target_notional_usdt=target,
-                mark_price=mark["open"],
+                mark_price=fill,
             )
             if sizing["notional_usdt"] > cap + 1e-9:
                 raise ValueError("rounded position exceeds configured notional cap")
             side = desired_side
-            fill = trade["open"] * (1.0 + slip_bps / 10_000) if side == "long" else trade["open"] * (1.0 - slip_bps / 10_000)
             contracts = sizing["contracts"]
             entry_notional = contracts * contract_notional_usdt(instrument_metadata, fill)
             fee = estimated_taker_fee_usdt(entry_notional, fee_bps)
