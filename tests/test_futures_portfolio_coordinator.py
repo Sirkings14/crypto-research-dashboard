@@ -51,8 +51,10 @@ def test_equal_sleeves_share_one_budget_and_aggregate_pnl():
         taker_fee_bps_per_side=0, slippage_bps_per_side=0,
     )
     assert result["market_count"] == 2
-    assert result["per_symbol"]["BTCUSDT"]["initial_equity_usdt"] == 1_000
-    assert result["per_symbol"]["ETHUSDT"]["initial_equity_usdt"] == 1_000
+    assert result["per_symbol"]["BTCUSDT"]["initial_equity_usdt"] == pytest.approx(1_250)
+    assert result["per_symbol"]["ETHUSDT"]["initial_equity_usdt"] == pytest.approx(750)
+    assert result["assumptions"]["max_notional_by_symbol_usdt"]["BTCUSDT"] <= result["per_symbol"]["BTCUSDT"]["initial_equity_usdt"]
+    assert result["assumptions"]["max_notional_by_symbol_usdt"]["ETHUSDT"] <= result["per_symbol"]["ETHUSDT"]["initial_equity_usdt"]
     assert result["final_equity_usdt"] == pytest.approx(2_030)
     assert result["maximum_observed_gross_notional_usdt"] <= 1_200
     assert result["live_trading_enabled"] is False
