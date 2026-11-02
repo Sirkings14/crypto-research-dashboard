@@ -44,7 +44,7 @@ def replay(trade, mark, sides, funding=None, **kwargs):
 
 
 def test_long_position_marked_and_closed_at_end():
-    trade, mark = rows([(60_000, 60_000), (60_000, 61_000), (61_000, 62_000)])
+    trade, mark = rows([(60_000, 60_000), (60_000, 61_000), (62_000, 62_000)])
     result = replay(trade, mark, ["long", "long", "flat"])
     assert result["final_equity_usdt"] == pytest.approx(2_020)
     assert result["trade_event_count"] == 2
@@ -52,7 +52,7 @@ def test_long_position_marked_and_closed_at_end():
 
 
 def test_short_position_profit_and_loss_direction():
-    trade, mark = rows([(60_000, 60_000), (60_000, 59_000)])
+    trade, mark = rows([(60_000, 60_000), (59_000, 59_000)])
     result = replay(trade, mark, ["short", "flat"])
     assert result["final_equity_usdt"] == pytest.approx(2_010)
 
