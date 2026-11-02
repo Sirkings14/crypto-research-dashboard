@@ -19,6 +19,7 @@ from futures_contract_math import (
     validate_linear_usdt_swap_metadata,
 )
 from futures_paper_ledger import run_futures_paper_replay
+from futures_portfolio_sizing import allocate_portfolio_notional
 
 
 def _positive(value: Any, name: str) -> float:
@@ -41,6 +42,8 @@ def run_futures_portfolio_replay(
     slippage_bps_per_side: float = 2.0,
     max_daily_loss_pct: float = 3.0,
     max_drawdown_pct: float = 10.0,
+    allocation_weights: dict[str, float] | None = None,
+    max_symbol_allocation_pct: float = 100.0,
 ) -> dict[str, Any]:
     """Replay synchronized symbols with a latched portfolio-wide risk breaker.
 
@@ -134,14 +137,15 @@ def run_futures_portfolio_replay(
             f"notional across markets ({minimum_total:.8f} USDT)"
         )
 
-    target_allocations = {
-        symbol: minimum_notionals[symbol] +
-        (target_total - minimum_total) / count for symbol in symbols
-    }
-    cap_allocations = {
-        symbol: minimum_notionals[symbol] +
-        (cap_total - minimum_total) / count for symbol in symbols
-    }
+    allocation_plan = allocate_portfolio_notional(
+        minimum_notionals_usdt=minimum_notionals,
+        target_total_notional_usdt=target_total,
+        max_total_notional_usdt=cap_total,
+        weights=allocation_weights,
+        max_symbol_allocation_pct=max_symbol_allocation_pct,
+    )
+    target_allocations = allocation_plan["target_allocations_usdt"]
+    cap_allocations = allocation_plan["maximum_allocations_usdt"]
 
     def replay_all(signal_overrides: dict[str, list[str]] | None = None):
         replayed = {}
@@ -284,6 +288,7 @@ def run_futures_portfolio_replay(
         },
         "configured_target_total_notional_usdt": target_total,
         "configured_max_total_notional_usdt": cap_total,
+        "portfolio_sizing": allocation_plan,
         "maximum_observed_gross_notional_usdt": max(
             point["gross_notional_usdt"] for point in portfolio_curve
         ),
@@ -298,7 +303,9 @@ def run_futures_portfolio_replay(
         "assumptions": {
             "allocation": "ring-fenced capital sleeves with minimum contract lots funded first",
             "sleeve_initial_equity_usdt": sleeve_equity,
-            "allocation_method": "minimum valid contract lot per market, then equal split of remaining budget",
+            "allocation_method": "minimum valid contract lot per market, then weighted water-filling of remaining budget subject to per-symbol concentration caps",
+            "allocation_weights": allocation_plan["weights"],
+            "max_symbol_allocation_pct": max_symbol_allocation_pct,
             "minimum_notional_by_symbol_usdt": minimum_notionals,
             "target_notional_by_symbol_usdt": target_allocations,
             "max_notional_by_symbol_usdt": cap_allocations,
