@@ -115,7 +115,7 @@ def test_rejects_gaps_and_bad_signals():
 def test_daily_loss_guard_blocks_new_entries():
     trade, mark = rows([(60_000, 60_000), (60_000, 50_000), (50_000, 50_000)])
     result = replay(
-        trade, mark, ["long", "flat", "long"],
+        trade, mark, ["long", "long", "long"],
         max_daily_loss_pct=1.0, max_drawdown_pct=50.0,
     )
     assert result["risk_entries_blocked"] is True
