@@ -1,9 +1,10 @@
-"""Ring-fenced multi-symbol Futures paper portfolio coordinator.
+"""Ring-fenced multi-symbol Futures paper replay with a portfolio risk breaker.
 
-This v1 coordinator funds each instrument's minimum valid contract lot first,
-then allocates remaining portfolio notional across independent capital sleeves.
-It requires identical candle timelines and aggregates equity/exposure. It is
-not a cross-margin account or a unified intraday risk engine.
+The coordinator funds each instrument's minimum valid contract lot first,
+then allocates remaining portfolio notional across independent sleeves. A
+synchronized first pass detects portfolio-wide loss/drawdown breaches; a second
+pass latches the breaker and closes all sleeves at the next candle open.
+This remains a research replay, not a cross-margin or liquidation model.
 """
 from __future__ import annotations
 
@@ -40,13 +41,12 @@ def run_futures_portfolio_replay(
     max_daily_loss_pct: float = 3.0,
     max_drawdown_pct: float = 10.0,
 ) -> dict[str, Any]:
-    """Replay several instruments with minimum-lot-aware ring-fenced allocations.
+    """Replay synchronized symbols with a latched portfolio-wide risk breaker.
 
-    Each market value must contain trade_candles, mark_candles, funding_history,
-    instrument_metadata and target_sides. All markets must share the exact same
-    candle timestamps. Initial equity is split equally; minimum valid contract
-    notionals are funded first, then remaining target/cap is split equally.
-    The aggregate cap cannot exceed starting equity (a 1x gross-notional ceiling).
+    A completed-candle portfolio equity breach is detected on the first pass.
+    On the next candle open, every sleeve is forced flat and all later entries
+    are blocked. Initial equity is split equally; minimum contract lots are
+    funded first, then remaining target/cap is split equally.
     """
     if not isinstance(markets, dict) or not markets:
         raise ValueError("markets must be a non-empty symbol-to-market mapping")
@@ -142,45 +142,104 @@ def run_futures_portfolio_replay(
         (cap_total - minimum_total) / count for symbol in symbols
     }
 
-    for symbol in symbols:
-        item = markets[symbol]
-        results[symbol] = run_futures_paper_replay(
-            symbol=symbol,
-            trade_candles=item["trade_candles"],
-            mark_candles=item["mark_candles"],
-            funding_history=item["funding_history"],
-            instrument_metadata=item["instrument_metadata"],
-            target_sides=item["target_sides"],
-            initial_equity_usdt=sleeve_equity,
-            target_notional_usdt=target_allocations[symbol],
-            max_notional_usdt=cap_allocations[symbol],
-            taker_fee_bps_per_side=taker_fee_bps_per_side,
-            slippage_bps_per_side=slippage_bps_per_side,
-            max_daily_loss_pct=max_daily_loss_pct,
-            max_drawdown_pct=max_drawdown_pct,
-        )
-
-    portfolio_curve = []
-    for index, timestamp in enumerate(baseline_timestamps):
-        total_equity = sum(
-            results[symbol]["equity_curve"][index]["equity_usdt"]
-            for symbol in symbols
-        )
-        total_exposure = 0.0
+    def replay_all(signal_overrides: dict[str, list[str]] | None = None):
+        replayed = {}
         for symbol in symbols:
-            point = results[symbol]["equity_curve"][index]
-            contracts = point["contracts"]
-            if contracts:
-                total_exposure += contracts * contract_notional_usdt(
-                    markets[symbol]["instrument_metadata"], point["mark_price"]
-                )
-        portfolio_curve.append({
-            "timestamp": timestamp,
-            "equity_usdt": total_equity,
-            "gross_notional_usdt": total_exposure,
-            "gross_exposure_pct_of_starting_equity": total_exposure / initial * 100.0,
-        })
+            item = markets[symbol]
+            replayed[symbol] = run_futures_paper_replay(
+                symbol=symbol,
+                trade_candles=item["trade_candles"],
+                mark_candles=item["mark_candles"],
+                funding_history=item["funding_history"],
+                instrument_metadata=item["instrument_metadata"],
+                target_sides=(signal_overrides or {}).get(symbol, item["target_sides"]),
+                initial_equity_usdt=sleeve_equity,
+                target_notional_usdt=target_allocations[symbol],
+                max_notional_usdt=cap_allocations[symbol],
+                taker_fee_bps_per_side=taker_fee_bps_per_side,
+                slippage_bps_per_side=slippage_bps_per_side,
+                # Sleeve-level guards are intentionally neutralized. The
+                # synchronized controller below owns the portfolio limits.
+                max_daily_loss_pct=100.0,
+                max_drawdown_pct=100.0,
+            )
+        return replayed
 
+    def aggregate_curve(replayed):
+        curve = []
+        for index, timestamp in enumerate(baseline_timestamps):
+            total_equity = sum(
+                replayed[symbol]["equity_curve"][index]["equity_usdt"]
+                for symbol in symbols
+            )
+            total_exposure = 0.0
+            for symbol in symbols:
+                point = replayed[symbol]["equity_curve"][index]
+                if point["contracts"]:
+                    total_exposure += point["contracts"] * contract_notional_usdt(
+                        markets[symbol]["instrument_metadata"], point["mark_price"]
+                    )
+            curve.append({
+                "timestamp": timestamp,
+                "equity_usdt": total_equity,
+                "gross_notional_usdt": total_exposure,
+                "gross_exposure_pct_of_starting_equity": total_exposure / initial * 100.0,
+            })
+        return curve
+
+    # First pass identifies the earliest completed-candle global breach.
+    exploratory = replay_all()
+    exploratory_curve = aggregate_curve(exploratory)
+    peak = initial
+    daily_open_equity = initial
+    current_day = baseline_timestamps[0][:10]
+    breaker_index = None
+    breaker_reason = None
+    breaker_metrics = None
+    max_portfolio_drawdown = 0.0
+    for index, point in enumerate(exploratory_curve):
+        day = point["timestamp"][:10]
+        if day != current_day:
+            daily_open_equity = exploratory_curve[index - 1]["equity_usdt"]
+            current_day = day
+        equity = point["equity_usdt"]
+        peak = max(peak, equity)
+        daily_loss_pct = max(0.0, (daily_open_equity - equity) / daily_open_equity * 100.0)
+        drawdown_pct = max(0.0, (peak - equity) / peak * 100.0)
+        max_portfolio_drawdown = max(max_portfolio_drawdown, drawdown_pct)
+        if daily_loss_pct >= max_daily_loss_pct:
+            breaker_index, breaker_reason = index, "portfolio_daily_loss_limit"
+        elif drawdown_pct >= max_drawdown_pct:
+            breaker_index, breaker_reason = index, "portfolio_max_drawdown_limit"
+        if breaker_index is not None:
+            breaker_metrics = {
+                "daily_loss_pct": daily_loss_pct,
+                "drawdown_pct": drawdown_pct,
+                "equity_usdt": equity,
+            }
+            break
+
+    breaker_triggered = breaker_index is not None
+    breaker_exit_index = (
+        min(breaker_index + 1, len(baseline_timestamps) - 1)
+        if breaker_triggered else None
+    )
+    if breaker_triggered:
+        # A breach is known at candle close; flatten every sleeve at the next
+        # candle open. If it occurs on the final candle, the ledger's normal
+        # end-of-replay close already exits at that candle close.
+        overridden = {}
+        for symbol in symbols:
+            original = markets[symbol]["target_sides"]
+            overridden[symbol] = [
+                side if index <= breaker_index else "flat"
+                for index, side in enumerate(original)
+            ]
+        results = replay_all(overridden)
+    else:
+        results = exploratory
+
+    portfolio_curve = aggregate_curve(results)
     final_equity = sum(results[symbol]["final_equity_usdt"] for symbol in symbols)
     peak = initial
     max_portfolio_drawdown = 0.0
@@ -199,6 +258,20 @@ def run_futures_portfolio_replay(
         "net_pnl_usdt": final_equity - initial,
         "return_pct": (final_equity / initial - 1.0) * 100.0,
         "max_portfolio_drawdown_pct": max_portfolio_drawdown,
+        "portfolio_risk_breaker": {
+            "triggered": breaker_triggered,
+            "reason": breaker_reason,
+            "detection_timestamp": (
+                baseline_timestamps[breaker_index] if breaker_triggered else None
+            ),
+            "coordinated_exit_timestamp": (
+                baseline_timestamps[breaker_exit_index] if breaker_triggered else None
+            ),
+            "metrics_at_detection": breaker_metrics,
+            "behavior": "latch permanently; force all sleeves flat at next candle open; block all later entries",
+            "daily_loss_limit_pct": max_daily_loss_pct,
+            "max_drawdown_limit_pct": max_drawdown_pct,
+        },
         "configured_target_total_notional_usdt": target_total,
         "configured_max_total_notional_usdt": cap_total,
         "maximum_observed_gross_notional_usdt": max(
@@ -221,9 +294,9 @@ def run_futures_portfolio_replay(
             "max_notional_by_symbol_usdt": cap_allocations,
             "gross_notional_limit": "sum of sleeve caps; cannot exceed starting equity (1x)",
             "timeline": "all symbols require identical candle timestamps",
-            "risk_controls": "daily-loss and drawdown entry guards operate per sleeve, not globally",
+            "risk_controls": "synchronized portfolio-wide daily-loss and peak-to-trough drawdown breaker; all sleeves flatten together at next candle open",
             "cross_margin": "not implemented",
-            "portfolio_wide_intraday_loss_guard": "not implemented",
+            "portfolio_wide_intraday_loss_guard": "not implemented; checks completed candle marks only",
             "liquidation_model": "not implemented",
         },
         "live_trading_enabled": False,
