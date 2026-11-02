@@ -139,6 +139,12 @@ def analyze_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
         "reasons": reasons,
         "funding_context": dataset.get("funding"),
         "funding_error": dataset.get("funding_error"),
+        "funding_history_count": len(dataset.get("funding_history", [])),
+        "funding_history_realized_count": sum(
+            1 for record in dataset.get("funding_history", [])
+            if record.get("realized_rate") is not None
+        ),
+        "funding_history_error": dataset.get("funding_history_error"),
         "funding_included_in_research_score": False,
         "signal_is_probability": False,
         "order_instruction": None,
