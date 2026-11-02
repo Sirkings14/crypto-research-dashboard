@@ -8,6 +8,7 @@ This remains a research replay, not a cross-margin or liquidation model.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from math import isfinite
 from typing import Any
 
@@ -192,13 +193,17 @@ def run_futures_portfolio_replay(
     exploratory_curve = aggregate_curve(exploratory)
     peak = initial
     daily_open_equity = initial
-    current_day = baseline_timestamps[0][:10]
+    current_day = datetime.fromisoformat(
+        baseline_timestamps[0].replace("Z", "+00:00")
+    ).astimezone(timezone.utc).date()
     breaker_index = None
     breaker_reason = None
     breaker_metrics = None
     max_portfolio_drawdown = 0.0
     for index, point in enumerate(exploratory_curve):
-        day = point["timestamp"][:10]
+        day = datetime.fromisoformat(
+            point["timestamp"].replace("Z", "+00:00")
+        ).astimezone(timezone.utc).date()
         if day != current_day:
             daily_open_equity = exploratory_curve[index - 1]["equity_usdt"]
             current_day = day
@@ -267,8 +272,13 @@ def run_futures_portfolio_replay(
             "coordinated_exit_timestamp": (
                 baseline_timestamps[breaker_exit_index] if breaker_triggered else None
             ),
+            "coordinated_exit_execution": (
+                "next_candle_open"
+                if breaker_triggered and breaker_index < len(baseline_timestamps) - 1
+                else ("final_candle_close" if breaker_triggered else None)
+            ),
             "metrics_at_detection": breaker_metrics,
-            "behavior": "latch permanently; force all sleeves flat at next candle open; block all later entries",
+            "behavior": "latch permanently; force all sleeves flat at the next candle open (or final candle close if no next candle exists); block all later entries",
             "daily_loss_limit_pct": max_daily_loss_pct,
             "max_drawdown_limit_pct": max_drawdown_pct,
         },
