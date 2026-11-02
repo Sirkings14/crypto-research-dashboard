@@ -90,3 +90,51 @@ def test_each_market_is_independently_validated_by_single_symbol_ledger():
     markets["ETHUSDT"]["instrument_metadata"]["instrument"] = "BTC-USDT-SWAP"
     with pytest.raises(ValueError, match="does not match"):
         run_futures_portfolio_replay(markets=markets)
+
+
+def test_portfolio_daily_loss_breaker_flattens_all_symbols_and_blocks_reentry():
+    markets = two_markets()
+    for symbol in markets:
+        item = markets[symbol]
+        if symbol == "BTCUSDT":
+            prices = [(60_000, 60_000), (60_000, 54_000), (54_000, 54_000)]
+        else:
+            prices = [(3_000, 3_000), (3_000, 2_700), (2_700, 2_700)]
+        item["trade_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        item["mark_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        item["target_sides"] = ["long", "long", "long"]
+
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+        max_daily_loss_pct=4,
+        max_drawdown_pct=50,
+    )
+
+    breaker = result["portfolio_risk_breaker"]
+    assert breaker["triggered"] is True
+    assert breaker["reason"] == "portfolio_daily_loss_limit"
+    assert breaker["detection_timestamp"] == stamp(1)
+    assert breaker["coordinated_exit_timestamp"] == stamp(2)
+    for symbol in ("BTCUSDT", "ETHUSDT"):
+        trades = result["per_symbol"][symbol]["trades"]
+        assert any(
+            trade["action"] == "close" and trade["timestamp"] == stamp(2)
+            for trade in trades
+        )
+        assert not any(
+            trade["action"] == "open" and trade["timestamp"] == stamp(2)
+            for trade in trades
+        )
+        assert result["per_symbol"][symbol]["equity_curve"][-1]["position_side"] == "flat"
+    assert result["live_trading_enabled"] is False
