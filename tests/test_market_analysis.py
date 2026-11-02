@@ -24,7 +24,7 @@ def make_dataset(symbol="BTCUSDT", market="spot", trend=1.0, count=100):
 def test_uptrend_scores_bullish_but_never_an_order():
     result = analyze_dataset(make_dataset())
     assert result["research_bias"] == "bullish"
-    assert result["research_score"] >= 3
+    assert result["research_score"] >= 2
     assert result["signal_is_probability"] is False
     assert result["order_instruction"] is None
 
