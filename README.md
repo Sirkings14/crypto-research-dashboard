@@ -92,3 +92,10 @@ For each OKX USDT swap, the collector also reads public instrument metadata: con
 ### Mark-price history for risk research
 
 The collector also requests up to 100 completed hourly mark-price candles for each perpetual swap. These are kept separate from the trade-price candles and are not substituted for them. Mark-price candles provide the reference series needed for a later, more realistic unrealized-PnL and liquidation-risk paper model; missing mark-price data is reported separately and must block any risk-sensitive simulation for that market. OKX limits this endpoint to 100 rows per request.
+
+
+## Contract-aware Futures paper accounting (initial primitives)
+
+`futures_contract_math.py` adds isolated, deterministic accounting primitives for OKX-style linear USDT-settled perpetual contracts. It derives per-contract USDT notional from the public contract value/currency and mark price, rounds target exposure down to the published lot increment, rejects sizes below the published minimum, computes linear long/short P&L, and estimates one-side taker fees. Mark-to-market uses the supplied mark price rather than substituting the trade candle close.
+
+This is not yet a full Futures paper-trading worker. The functions fail closed for unsupported contract types, non-USDT settlement, missing sizing metadata, or instruments not marked live. The module does not choose leverage, calculate liquidation prices, model maintenance margin, or place orders. Entry and exit fees must be charged separately by a future ledger, and funding must be applied only at verified settlement timestamps to positions actually open at that time. No Futures paper account has been seeded by this change; no historical or live performance is claimed.
