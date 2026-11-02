@@ -43,8 +43,8 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: python -m pip install --disable-pip-version-check numpy requests pytest
+        run: python -m pip install --disable-pip-version-check -r requirements.txt pytest
       - name: Compile market modules
         run: python -m py_compile market_universe.py market_universe_worker.py market_analysis.py funding_replay.py
       - name: Run market data, analysis and funding tests
-        run: python -m pytest -q tests/test_market_universe.py tests/test_market_analysis.py tests/test_funding_replay.py
+        run: python -m pytest -q
