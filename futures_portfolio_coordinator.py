@@ -73,7 +73,6 @@ def run_futures_portfolio_replay(
         raise ValueError("max_total_notional_usdt cannot exceed initial equity in 1x portfolio mode")
 
     count = len(symbols)
-    sleeve_equity = initial / count
     baseline_timestamps: list[str] | None = None
     results: dict[str, dict[str, Any]] = {}
     minimum_notionals: dict[str, float] = {}
@@ -147,6 +146,16 @@ def run_futures_portfolio_replay(
     )
     target_allocations = allocation_plan["target_allocations_usdt"]
     cap_allocations = allocation_plan["maximum_allocations_usdt"]
+    # Ring-fenced sleeve capital follows each symbol's share of the maximum
+    # portfolio budget. This guarantees no sleeve is assigned more notional
+    # capacity than its own starting equity under the 1x research assumption.
+    sleeve_equity_by_symbol = {
+        symbol: initial * cap_allocations[symbol] / cap_total
+        for symbol in symbols
+    }
+    for symbol in symbols:
+        if cap_allocations[symbol] > sleeve_equity_by_symbol[symbol] + 1e-7:
+            raise ValueError(f"{symbol} notional cap exceeds its ring-fenced sleeve equity")
 
     def replay_all(signal_overrides: dict[str, list[str]] | None = None):
         replayed = {}
@@ -159,7 +168,7 @@ def run_futures_portfolio_replay(
                 funding_history=item["funding_history"],
                 instrument_metadata=item["instrument_metadata"],
                 target_sides=(signal_overrides or {}).get(symbol, item["target_sides"]),
-                initial_equity_usdt=sleeve_equity,
+                initial_equity_usdt=sleeve_equity_by_symbol[symbol],
                 target_notional_usdt=target_allocations[symbol],
                 max_notional_usdt=cap_allocations[symbol],
                 taker_fee_bps_per_side=taker_fee_bps_per_side,
@@ -303,7 +312,7 @@ def run_futures_portfolio_replay(
         "portfolio_equity_curve": portfolio_curve,
         "assumptions": {
             "allocation": "ring-fenced capital sleeves with minimum contract lots funded first",
-            "sleeve_initial_equity_usdt": sleeve_equity,
+            "sleeve_initial_equity_by_symbol_usdt": sleeve_equity_by_symbol,
             "allocation_method": "minimum valid contract lot per market, then weighted water-filling of remaining budget subject to per-symbol concentration caps",
             "allocation_weights": allocation_plan["weights"],
             "max_symbol_allocation_pct": max_symbol_allocation_pct,
