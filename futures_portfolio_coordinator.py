@@ -226,15 +226,23 @@ def run_futures_portfolio_replay(
         daily_loss_pct = max(0.0, (daily_open_equity - equity) / daily_open_equity * 100.0)
         drawdown_pct = max(0.0, (peak - equity) / peak * 100.0)
         max_portfolio_drawdown = max(max_portfolio_drawdown, drawdown_pct)
+        gross_notional = point["gross_notional_usdt"]
         if daily_loss_pct >= max_daily_loss_pct:
             breaker_index, breaker_reason = index, "portfolio_daily_loss_limit"
         elif drawdown_pct >= max_drawdown_pct:
             breaker_index, breaker_reason = index, "portfolio_max_drawdown_limit"
+        elif gross_notional > cap_total + 1e-7:
+            breaker_index, breaker_reason = index, "portfolio_gross_exposure_limit"
         if breaker_index is not None:
             breaker_metrics = {
                 "daily_loss_pct": daily_loss_pct,
                 "drawdown_pct": drawdown_pct,
                 "equity_usdt": equity,
+                "gross_notional_usdt": gross_notional,
+                "gross_notional_limit_usdt": cap_total,
+                "gross_exposure_pct_of_starting_equity": (
+                    gross_notional / initial * 100.0
+                ),
             }
             break
 
@@ -293,6 +301,7 @@ def run_futures_portfolio_replay(
             ),
             "metrics_at_detection": breaker_metrics,
             "behavior": "latch permanently; force all sleeves flat at the next candle open (or final candle close if no next candle exists); block all later entries",
+            "gross_exposure_limit_usdt": cap_total,
             "daily_loss_limit_pct": max_daily_loss_pct,
             "max_drawdown_limit_pct": max_drawdown_pct,
         },
@@ -321,7 +330,8 @@ def run_futures_portfolio_replay(
             "max_notional_by_symbol_usdt": cap_allocations,
             "gross_notional_limit": "sum of sleeve caps; cannot exceed starting equity (1x)",
             "timeline": "all symbols require identical candle timestamps",
-            "risk_controls": "synchronized portfolio-wide daily-loss and peak-to-trough drawdown breaker; all sleeves flatten together at next candle open",
+            "risk_controls": "synchronized portfolio-wide daily-loss, peak-to-trough drawdown, and mark-notional gross-exposure breaker; all sleeves flatten together at next candle open",
+            "gross_exposure_control": "checks combined mark-price notional at every completed candle; if above the configured portfolio cap, all sleeves flatten at the next candle open and entries remain blocked for the rest of the replay; no partial rebalancing or intrabar protection",
             "cross_margin": "not implemented",
             "portfolio_wide_intraday_loss_guard": "not implemented; checks completed candle marks only",
             "liquidation_model": "not implemented",
