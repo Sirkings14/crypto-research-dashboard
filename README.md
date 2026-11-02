@@ -84,3 +84,7 @@ The collector also retrieves up to 100 recent funding-history records per swap. 
 ### Funding-cost replay (research only)
 
 `funding_replay.py` replays actual `realized_rate` observations for a fixed USDT notional and a selected long or short side. Positive output is a net funding expense; negative output is a net funding credit. Predicted rates and records without a realized rate are excluded. This is deliberately not a complete futures backtest: it does not include price PnL, changing notional, trading fees, slippage, margin or liquidation. It cannot establish profitability or authorize live trading.
+
+### Perpetual contract metadata
+
+For each OKX USDT swap, the collector also reads public instrument metadata: contract type/value and value currency, settlement currency, contract lot increment, minimum contract size, tick size, exchange leverage ceiling, instrument state and any upcoming sizing-rule changes. Only linear USDT-settled swaps are accepted by this metadata parser. The exchange leverage ceiling is informational and is never used to configure leverage or open a position. Contract size fields are retained so a later paper engine can size in contracts rather than incorrectly treating contract counts as coin quantities.
