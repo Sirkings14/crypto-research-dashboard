@@ -285,6 +285,16 @@ def run_futures_paper_replay(
             "cash_usdt": cash, "mark_price": mark["close"],
             "position_side": position["side"] if position else "flat",
             "contracts": position["contracts"] if position else 0.0,
+            "gross_notional_open_usdt": (
+                position["contracts"] * contract_notional_usdt(
+                    instrument_metadata, mark["open"]
+                ) if position else 0.0
+            ),
+            "gross_notional_usdt": (
+                position["contracts"] * contract_notional_usdt(
+                    instrument_metadata, mark["close"]
+                ) if position else 0.0
+            ),
             "drawdown_pct": drawdown,
         })
 
