@@ -204,3 +204,66 @@ def test_coordinator_fails_closed_when_minimum_lot_breaks_concentration_cap():
             max_total_notional_usdt=1_200,
             max_symbol_allocation_pct=40,
         )
+
+
+
+def test_portfolio_exposure_breaker_flattens_all_symbols_after_price_drift():
+    markets = two_markets()
+    for symbol, prices in {
+        "BTCUSDT": [(60_000, 60_000), (60_000, 90_000), (90_000, 90_000)],
+        "ETHUSDT": [(3_000, 3_000), (3_000, 4_500), (4_500, 4_500)],
+    }.items():
+        markets[symbol]["trade_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        markets[symbol]["mark_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        markets[symbol]["target_sides"] = ["long", "long", "long"]
+
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+        max_daily_loss_pct=100,
+        max_drawdown_pct=100,
+    )
+
+    breaker = result["portfolio_risk_breaker"]
+    assert breaker["triggered"] is True
+    assert breaker["reason"] == "portfolio_gross_exposure_limit"
+    assert breaker["detection_timestamp"] == stamp(1)
+    assert breaker["coordinated_exit_timestamp"] == stamp(2)
+    assert breaker["metrics_at_detection"]["gross_notional_usdt"] > 1_200
+    for symbol in ("BTCUSDT", "ETHUSDT"):
+        trades = result["per_symbol"][symbol]["trades"]
+        assert any(
+            trade["action"] == "close" and trade["timestamp"] == stamp(2)
+            for trade in trades
+        )
+        assert not any(
+            trade["action"] == "open" and trade["timestamp"] == stamp(2)
+            for trade in trades
+        )
+        assert result["per_symbol"][symbol]["equity_curve"][-1]["position_side"] == "flat"
+    assert result["live_trading_enabled"] is False
+
+
+def test_portfolio_exposure_at_or_below_cap_does_not_trigger_exposure_breaker():
+    result = run_futures_portfolio_replay(
+        markets=two_markets(),
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+        max_daily_loss_pct=100,
+        max_drawdown_pct=100,
+    )
+    assert result["portfolio_risk_breaker"]["triggered"] is False
+    assert result["maximum_observed_gross_notional_usdt"] <= 1_200
