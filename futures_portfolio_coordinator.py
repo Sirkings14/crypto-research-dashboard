@@ -11,7 +11,12 @@ from __future__ import annotations
 from math import isfinite
 from typing import Any
 
-from futures_contract_math import contract_notional_usdt
+from math import ceil
+
+from futures_contract_math import (
+    contract_notional_usdt,
+    validate_linear_usdt_swap_metadata,
+)
 from futures_paper_ledger import run_futures_paper_replay
 
 
@@ -66,11 +71,11 @@ def run_futures_portfolio_replay(
 
     count = len(symbols)
     sleeve_equity = initial / count
-    sleeve_target = target_total / count
-    sleeve_cap = cap_total / count
     baseline_timestamps: list[str] | None = None
     results: dict[str, dict[str, Any]] = {}
+    minimum_notionals: dict[str, float] = {}
 
+    # Validate data alignment and instrument identity before attempting sizing.
     for symbol in symbols:
         item = markets[symbol]
         required = {
@@ -97,7 +102,50 @@ def run_futures_portfolio_replay(
             baseline_timestamps = stamps
         elif stamps != baseline_timestamps:
             raise ValueError("all portfolio markets must share identical candle timestamps")
+        if not stamps:
+            raise ValueError(f"{symbol} must contain completed candles")
 
+        metadata = item["instrument_metadata"]
+        validate_linear_usdt_swap_metadata(metadata)
+        expected_instrument = f"{symbol[:-4]}-USDT-SWAP"
+        if metadata.get("instrument") != expected_instrument:
+            raise ValueError(
+                f"{symbol} instrument metadata {metadata.get('instrument')!r} does not match "
+                f"expected {expected_instrument!r}"
+            )
+        per_contract = contract_notional_usdt(metadata, marks[0].get("close"))
+        lot_size = _positive(metadata.get("lot_size_contracts"), f"{symbol} lot_size_contracts")
+        minimum_contracts = _positive(
+            metadata.get("minimum_size_contracts"), f"{symbol} minimum_size_contracts"
+        )
+        minimum_lots = ceil(minimum_contracts / lot_size)
+        minimum_notionals[symbol] = minimum_lots * lot_size * per_contract
+
+    if not baseline_timestamps:
+        raise ValueError("portfolio markets must contain aligned completed candles")
+    minimum_total = sum(minimum_notionals.values())
+    if target_total + 1e-9 < minimum_total:
+        raise ValueError(
+            "target_total_notional_usdt is below the combined minimum contract "
+            f"notional across markets ({minimum_total:.8f} USDT)"
+        )
+    if cap_total + 1e-9 < minimum_total:
+        raise ValueError(
+            "max_total_notional_usdt is below the combined minimum contract "
+            f"notional across markets ({minimum_total:.8f} USDT)"
+        )
+
+    target_allocations = {
+        symbol: minimum_notionals[symbol] +
+        (target_total - minimum_total) / count for symbol in symbols
+    }
+    cap_allocations = {
+        symbol: minimum_notionals[symbol] +
+        (cap_total - minimum_total) / count for symbol in symbols
+    }
+
+    for symbol in symbols:
+        item = markets[symbol]
         results[symbol] = run_futures_paper_replay(
             symbol=symbol,
             trade_candles=trades,
@@ -106,16 +154,13 @@ def run_futures_portfolio_replay(
             instrument_metadata=item["instrument_metadata"],
             target_sides=item["target_sides"],
             initial_equity_usdt=sleeve_equity,
-            target_notional_usdt=sleeve_target,
-            max_notional_usdt=sleeve_cap,
+            target_notional_usdt=target_allocations[symbol],
+            max_notional_usdt=cap_allocations[symbol],
             taker_fee_bps_per_side=taker_fee_bps_per_side,
             slippage_bps_per_side=slippage_bps_per_side,
             max_daily_loss_pct=max_daily_loss_pct,
             max_drawdown_pct=max_drawdown_pct,
         )
-
-    if not baseline_timestamps:
-        raise ValueError("portfolio markets must contain aligned completed candles")
 
     portfolio_curve = []
     for index, timestamp in enumerate(baseline_timestamps):
@@ -172,8 +217,10 @@ def run_futures_portfolio_replay(
         "assumptions": {
             "allocation": "equal, ring-fenced capital sleeves",
             "sleeve_initial_equity_usdt": sleeve_equity,
-            "sleeve_target_notional_usdt": sleeve_target,
-            "sleeve_max_notional_usdt": sleeve_cap,
+            "allocation_method": "minimum valid contract lot per market, then equal split of remaining budget",
+            "minimum_notional_by_symbol_usdt": minimum_notionals,
+            "target_notional_by_symbol_usdt": target_allocations,
+            "max_notional_by_symbol_usdt": cap_allocations,
             "gross_notional_limit": "sum of sleeve caps; cannot exceed starting equity (1x)",
             "timeline": "all symbols require identical candle timestamps",
             "risk_controls": "daily-loss and drawdown entry guards operate per sleeve, not globally",
