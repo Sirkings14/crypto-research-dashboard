@@ -149,6 +149,16 @@ def test_funding_history_must_be_chronological_and_realized_only():
     assert result["funding_settlement_count"] == 1
 
 
+def test_funding_outside_replay_window_is_ignored():
+    trade, mark = rows([(60_000, 60_000), (60_000, 60_000)])
+    funding = [
+        {"funding_time": (BASE - timedelta(hours=8)).isoformat(), "realized_rate": 0.001},
+        {"funding_time": (BASE + timedelta(hours=8)).isoformat(), "realized_rate": 0.001},
+    ]
+    result = replay(trade, mark, ["long", "flat"], funding)
+    assert result["funding_settlement_count"] == 0
+    assert result["excluded_funding_outside_replay_window"] == 2
+
 def test_rejects_target_notional_above_cap():
     trade, mark = rows([(60_000, 60_000), (60_000, 60_000)])
     with pytest.raises(ValueError, match="cannot exceed"):
