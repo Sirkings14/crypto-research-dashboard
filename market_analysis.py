@@ -147,6 +147,12 @@ def analyze_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
         "funding_history_error": dataset.get("funding_history_error"),
         "instrument_metadata": dataset.get("instrument_metadata"),
         "instrument_metadata_error": dataset.get("instrument_metadata_error"),
+        "mark_price_candle_count": len(dataset.get("mark_price_candles", [])),
+        "latest_mark_price_candle": (
+            dataset.get("mark_price_candles", [])[-1]
+            if dataset.get("mark_price_candles") else None
+        ),
+        "mark_price_error": dataset.get("mark_price_error"),
         "funding_included_in_research_score": False,
         "signal_is_probability": False,
         "order_instruction": None,
