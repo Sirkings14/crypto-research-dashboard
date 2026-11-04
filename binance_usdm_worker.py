@@ -37,6 +37,25 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+def classify_source_status(
+    exchange_info_error: str | None,
+    failures: list[dict[str, str]],
+    success_count: int,
+    requested_count: int,
+) -> str:
+    """Distinguish a runner-level HTTP 451 block from genuine collector defects."""
+    if success_count:
+        return "available" if not failures else "partial"
+    all_market_requests_blocked = (
+        requested_count > 0
+        and len(failures) == requested_count
+        and all("451" in failure.get("error", "") for failure in failures)
+    )
+    if exchange_info_error and "451" in exchange_info_error and all_market_requests_blocked:
+        return "blocked_by_http_451"
+    return "unavailable"
+
+
 def assess_paper_readiness(
     symbol: str,
     trade_candles: list[dict[str, Any]],
