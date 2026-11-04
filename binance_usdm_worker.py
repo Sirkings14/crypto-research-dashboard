@@ -41,6 +41,22 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+def previous_month_labels(*, count: int = 2, now: datetime | None = None) -> list[str]:
+    """Return the most recent complete UTC calendar months, newest first."""
+    if not isinstance(count, int) or count < 1 or count > 12:
+        raise ValueError("count must be an integer between 1 and 12")
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        raise ValueError("now must include a timezone")
+    month_index = current.year * 12 + current.month - 1
+    labels = []
+    for offset in range(1, count + 1):
+        index = month_index - offset
+        year, month_number = divmod(index, 12)
+        labels.append(f"{year:04d}-{month_number + 1:02d}")
+    return labels
+
+
 def classify_source_status(
     exchange_info_error: str | None,
     failures: list[dict[str, str]],
