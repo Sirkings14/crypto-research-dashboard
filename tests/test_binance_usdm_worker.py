@@ -101,6 +101,81 @@ def test_binance_vision_archive_probe_fails_closed_when_any_dataset_is_missing()
     assert result["files"]["mark_price_klines"]["available"] is False
 
 
+class DownloadResponse:
+    def __init__(self, content, text=None, status_code=200):
+        self.content = content
+        self.text = text if text is not None else content.decode("utf-8", errors="replace")
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import requests
+            raise requests.HTTPError(f"HTTP {self.status_code}")
+
+
+class ArchiveSession:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.urls = []
+
+    def get(self, url, **kwargs):
+        self.urls.append((url, kwargs))
+        return self.responses.pop(0)
+
+
+def _archive_response(filename, rows):
+    import hashlib
+    import io
+    import zipfile
+
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(filename, rows)
+    content = payload.getvalue()
+    checksum = hashlib.sha256(content).hexdigest() + "  sample.zip\n"
+    return DownloadResponse(content), DownloadResponse(checksum.encode())
+
+
+def test_binance_vision_archive_inspection_verifies_checksum_and_reads_csv():
+    names = [
+        "BTCUSDT-1h-2026-10.csv",
+        "BTCUSDT-markPrice-1h-2026-10.csv",
+        "BTCUSDT-fundingRate-2026-10.csv",
+    ]
+    rows = [
+        "1000,100,102,99,101,10,4599999,1000,5,4,400,0\n",
+        "1000,100,102,99,101,0,4599999,0,0,0,0,0\n",
+        "calc_time,funding_interval_hours,last_funding_rate\n1000,8,0.0001\n",
+    ]
+    responses = []
+    for filename, content in zip(names, rows):
+        responses.extend(_archive_response(filename, content))
+    result = inspect_binance_vision_archives(
+        session=ArchiveSession(responses), month="2026-10"
+    )
+    assert result["all_checksums_valid"] is True
+    assert result["schema_inspection_only"] is True
+    assert result["files"]["trade_klines"]["row_count"] == 1
+    assert result["files"]["funding_rate"]["sample_rows"][0][0] == "calc_time"
+
+
+def test_binance_vision_archive_inspection_rejects_checksum_mismatch():
+    import io
+    import zipfile
+
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w") as archive:
+        archive.writestr("data.csv", "a,b\n1,2\n")
+    archive_response = DownloadResponse(payload.getvalue())
+    wrong_checksum = DownloadResponse(b"0" * 64 + b"  sample.zip\n")
+    responses = [archive_response, wrong_checksum] * 3
+    result = inspect_binance_vision_archives(
+        session=ArchiveSession(responses), month="2026-10"
+    )
+    assert result["all_checksums_valid"] is False
+    assert "checksum mismatch" in result["files"]["trade_klines"]["error"]
+
+
 def test_binance_vision_archive_probe_rejects_invalid_month():
     import pytest
 
