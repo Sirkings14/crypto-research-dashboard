@@ -5,6 +5,7 @@ USD-M is kept in a separate dataset from the existing OKX swap research feed.
 """
 from __future__ import annotations
 
+from bisect import bisect_right
 import csv
 import hashlib
 import io
