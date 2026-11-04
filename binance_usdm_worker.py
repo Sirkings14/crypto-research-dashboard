@@ -295,7 +295,8 @@ def assess_paper_readiness(
         ):
             reasons.append("trade_candle_timeline_has_gaps")
         start, end = parsed_stamps[0], parsed_stamps[-1]
-        funding_window_end = end.timestamp() + 0.010
+        candle_interval_seconds = (parsed_stamps[1] - parsed_stamps[0]).total_seconds()
+        replay_window_end = end.timestamp() + candle_interval_seconds
         for record in funding_history:
             try:
                 if record.get("realized_rate") is None or record.get("is_realized") is not True:
