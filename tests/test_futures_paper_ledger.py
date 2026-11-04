@@ -103,6 +103,16 @@ def test_funding_timestamp_more_than_ten_ms_after_open_is_rejected():
         replay(trade, mark, ["long", "long", "long"], funding)
 
 
+def test_funding_more_than_ten_ms_after_last_open_inside_final_candle_is_rejected():
+    trade, mark = rows([(60_000, 60_000), (60_000, 60_000)])
+    funding = [{
+        "funding_time": (BASE + timedelta(hours=1, milliseconds=11)).isoformat(),
+        "realized_rate": 0.001,
+    }]
+    with pytest.raises(ValueError, match="more than 10ms"):
+        replay(trade, mark, ["long", "long"], funding)
+
+
 def test_new_position_does_not_pay_funding_at_its_entry_timestamp():
     trade, mark = rows([(60_000, 60_000), (60_000, 60_000)])
     funding = [{"funding_time": stamp(0), "realized_rate": 0.01}]
