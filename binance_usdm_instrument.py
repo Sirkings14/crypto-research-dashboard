@@ -91,12 +91,35 @@ def parse_usdm_instrument_metadata(exchange_info: dict[str, Any], symbol: str) -
     min_qty = _decimal(lot.get("minQty"), "LOT_SIZE.minQty")
     max_qty = _decimal(lot.get("maxQty"), "LOT_SIZE.maxQty")
     step_size = _decimal(lot.get("stepSize"), "LOT_SIZE.stepSize")
-    market_min_qty = _decimal(market_lot.get("minQty"), "MARKET_LOT_SIZE.minQty")
-    market_max_qty = _decimal(market_lot.get("maxQty"), "MARKET_LOT_SIZE.maxQty")
-    market_step_size = _decimal(market_lot.get("stepSize"), "MARKET_LOT_SIZE.stepSize")
+    raw_market_min_qty = _decimal(market_lot.get("minQty"), "MARKET_LOT_SIZE.minQty", allow_zero=True)
+    raw_market_max_qty = _decimal(market_lot.get("maxQty"), "MARKET_LOT_SIZE.maxQty", allow_zero=True)
+    raw_market_step_size = _decimal(market_lot.get("stepSize"), "MARKET_LOT_SIZE.stepSize", allow_zero=True)
     min_notional = _decimal(notional.get("notional"), "MIN_NOTIONAL.notional")
 
-    if min_qty > max_qty or market_min_qty > market_max_qty:
+    # Binance can publish zero-valued MARKET_LOT_SIZE fields to indicate that
+    # this market-specific constraint is disabled. In that case retain the
+    # generic LOT_SIZE rule rather than rejecting a valid instrument.
+    market_filter_disabled = raw_market_step_size == 0
+    if market_filter_disabled:
+        effective_market_min = min_qty
+        effective_market_max = max_qty
+        effective_market_step = step_size
+    else:
+        effective_market_min = max(min_qty, raw_market_min_qty)
+        effective_market_max = min(
+            max_qty,
+            raw_market_max_qty if raw_market_max_qty > 0 else max_qty,
+        )
+        if raw_market_min_qty == 0:
+            effective_market_min = min_qty
+        if step_size % raw_market_step_size == 0:
+            effective_market_step = step_size
+        elif raw_market_step_size % step_size == 0:
+            effective_market_step = raw_market_step_size
+        else:
+            raise ValueError(f"{symbol}: LOT_SIZE and MARKET_LOT_SIZE increments are incompatible")
+
+    if min_qty > max_qty or effective_market_min > effective_market_max:
         raise ValueError(f"{symbol}: quantity filter minimum exceeds maximum")
 
     # Binance USD-M quantity is base-asset quantity, not an OKX contract count.
@@ -119,13 +142,14 @@ def parse_usdm_instrument_metadata(exchange_info: dict[str, Any], symbol: str) -
         "contract_unit": "base_asset_quantity",
         # The paper ledger uses market-style fills, so its sizing increments
         # must follow MARKET_LOT_SIZE rather than the generic LOT_SIZE filter.
-        "lot_size_contracts": str(market_step_size),
-        "minimum_size_contracts": str(market_min_qty),
-        "maximum_size_contracts": str(market_max_qty),
+        "lot_size_contracts": str(effective_market_step),
+        "minimum_size_contracts": str(effective_market_min),
+        "maximum_size_contracts": str(effective_market_max),
         "market_lot_size": {
-            "step_size": str(market_step_size),
-            "minimum_quantity": str(market_min_qty),
-            "maximum_quantity": str(market_max_qty),
+            "step_size": str(raw_market_step_size),
+            "minimum_quantity": str(raw_market_min_qty),
+            "maximum_quantity": str(raw_market_max_qty),
+            "disabled": market_filter_disabled,
         },
         "limit_order_lot_size": {
             "step_size": str(step_size),
