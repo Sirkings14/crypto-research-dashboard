@@ -163,12 +163,30 @@ def inspect_binance_vision_archives(
                     reader = csv.reader(io.TextIOWrapper(raw, encoding="utf-8", newline=""))
                     sample = []
                     row_count = 0
+                    timestamps = []
                     for row in reader:
                         row_count += 1
                         if len(sample) < 3:
                             sample.append(row)
+                        if row and row[0].isdigit():
+                            timestamps.append(int(row[0]))
             if row_count == 0:
                 raise ValueError("archive CSV is empty")
+            duplicate_count = len(timestamps) - len(set(timestamps))
+            ordered = all(right > left for left, right in zip(timestamps, timestamps[1:]))
+            coverage = {
+                "timestamp_count": len(timestamps),
+                "first_timestamp_ms": timestamps[0] if timestamps else None,
+                "last_timestamp_ms": timestamps[-1] if timestamps else None,
+                "duplicate_timestamp_count": duplicate_count,
+                "strictly_increasing": ordered,
+            }
+            if name in {"trade_klines", "mark_price_klines"} and len(timestamps) > 1:
+                diffs = [right - left for left, right in zip(timestamps, timestamps[1:])]
+                coverage["hourly_gap_count"] = sum(1 for diff in diffs if diff != 3_600_000)
+                coverage["missing_hour_count"] = sum(
+                    max(0, diff // 3_600_000 - 1) for diff in diffs
+                )
             inspected[name] = {
                 "url": url,
                 "archive_file": csv_names[0],
@@ -176,6 +194,7 @@ def inspect_binance_vision_archives(
                 "checksum_valid": True,
                 "row_count": row_count,
                 "sample_rows": sample,
+                "coverage": coverage,
             }
         except (requests.RequestException, ValueError, zipfile.BadZipFile, OSError) as exc:
             inspected[name] = {"url": url, "checksum_valid": False, "error": str(exc)}
