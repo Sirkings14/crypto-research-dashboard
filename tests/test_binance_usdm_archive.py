@@ -41,7 +41,7 @@ def test_missing_hour_is_not_forward_filled():
 def test_trade_mark_timestamp_mismatch_rejected():
     client=sample_session()
     with zipfile.ZipFile(io.BytesIO(client.responses[2].content)) as z: rows=z.read(z.namelist()[0]).decode().splitlines()
-    row=rows[5].split(","); row[0]=str(int(row[0])+3_600_000); rows[5]=",".join(row)
+    row=rows[5].split(","); row[0]=str(int(row[0])+3_600_000); row[6]=str(int(row[6])+3_600_000); rows[5]=",".join(row)
     client.responses[2],client.responses[3]=archive("BTCUSDT-markPrice-1h-2026-09.csv","\n".join(rows)+"\n")
     with pytest.raises(ValueError,match="strictly increasing|timestamps differ"): load_monthly_symbol_archives("BTCUSDT","2026-09",session=client)
 def test_funding_offset_over_ten_ms_rejected():
