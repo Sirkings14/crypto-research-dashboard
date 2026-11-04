@@ -3,6 +3,7 @@
 **Decision date:** 2026-11-02  
 **Primary candidate:** Binance  
 **Read-only derivatives data fallback:** OKX  
+**Account status:** user reports Binance account is verified and working; no funds deposited  
 **Execution status:** disabled; no API credentials or order placement
 
 ## Why Binance is the primary candidate
@@ -51,3 +52,10 @@ Therefore:
 - No API keys, secrets, account balances or personal identity data are stored by this decision.
 - No live orders, transfers, deposits or withdrawals are performed.
 - Public market data and paper simulations do not establish profitability or guarantee real execution.
+
+
+## Account confirmation update
+
+The account owner has confirmed that their Binance account is verified and working, and that no funds have been deposited. This removes the need to treat account KYC as unconfirmed, but it does not by itself confirm USDⓈ-M Futures product access, each desired contract, or available funding/withdrawal rails. No deposit is required for the current engineering phase.
+
+A separate `binance_usdm_data.py` adapter now fetches public USDⓈ-M trade candles, mark-price candles and historical funding records. It is covered by mocked-response tests and is not yet connected to the scheduled portfolio replay. The existing OKX dataset remains explicitly labelled as OKX; switching the replay requires successful Binance public-data validation and Binance-specific contract/fee/margin rules.
