@@ -123,6 +123,12 @@ def run_futures_portfolio_replay(
             metadata.get("minimum_size_contracts"), f"{symbol} minimum_size_contracts"
         )
         minimum_lots = ceil(minimum_contracts / lot_size)
+        minimum_required_notional = float(metadata.get("minimum_notional_usdt", 0) or 0)
+        if not isfinite(minimum_required_notional) or minimum_required_notional < 0:
+            raise ValueError(f"{symbol} minimum_notional_usdt must be finite and non-negative")
+        if minimum_required_notional:
+            notional_lots = ceil(minimum_required_notional / (lot_size * per_contract))
+            minimum_lots = max(minimum_lots, notional_lots)
         minimum_notionals[symbol] = minimum_lots * lot_size * per_contract
 
     if not baseline_timestamps:
