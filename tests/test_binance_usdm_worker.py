@@ -4,6 +4,7 @@ from binance_usdm_worker import (
     assess_paper_readiness,
     classify_source_status,
     probe_binance_vision_archives,
+    inspect_binance_vision_archives,
 )
 
 
