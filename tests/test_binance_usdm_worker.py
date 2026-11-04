@@ -39,6 +39,26 @@ def funding():
     }]
 
 
+def test_http_451_is_classified_as_runner_block_not_market_data():
+    failures = [
+        {"symbol": symbol, "error": "451 Client Error: unavailable"}
+        for symbol in ("BTCUSDT", "ETHUSDT", "BNBUSDT")
+    ]
+    assert classify_source_status(
+        "451 Client Error: unavailable", failures, 0, 3
+    ) == "blocked_by_http_451"
+
+
+def test_partial_source_failures_are_not_misclassified_as_http_451_skip():
+    failures = [
+        {"symbol": "BTCUSDT", "error": "451 Client Error: unavailable"},
+        {"symbol": "ETHUSDT", "error": "timeout"},
+    ]
+    assert classify_source_status(
+        "451 Client Error: unavailable", failures, 0, 2
+    ) == "unavailable"
+
+
 def test_readiness_requires_matching_completed_trade_and_mark_timestamps():
     trade = candles()
     mark = candles()
