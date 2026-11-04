@@ -164,12 +164,15 @@ def inspect_binance_vision_archives(
                     sample = []
                     row_count = 0
                     timestamps = []
+                    funding_intervals = []
                     for row in reader:
                         row_count += 1
                         if len(sample) < 3:
                             sample.append(row)
                         if row and row[0].isdigit():
                             timestamps.append(int(row[0]))
+                            if name == "funding_rate" and len(row) > 1:
+                                funding_intervals.append(row[1])
             if row_count == 0:
                 raise ValueError("archive CSV is empty")
             duplicate_count = len(timestamps) - len(set(timestamps))
@@ -187,6 +190,20 @@ def inspect_binance_vision_archives(
                 coverage["missing_hour_count"] = sum(
                     max(0, diff // 3_600_000 - 1) for diff in diffs
                 )
+                coverage["gap_intervals"] = [
+                    {
+                        "previous_open_time_ms": left,
+                        "next_open_time_ms": right,
+                        "missing_hours": max(0, (right - left) // 3_600_000 - 1),
+                    }
+                    for left, right in zip(timestamps, timestamps[1:])
+                    if right - left != 3_600_000
+                ]
+            if name == "funding_rate":
+                coverage["timestamp_offsets_within_hour_ms"] = sorted(
+                    {stamp % 3_600_000 for stamp in timestamps}
+                )
+                coverage["funding_interval_hours"] = sorted(set(funding_intervals))
             inspected[name] = {
                 "url": url,
                 "archive_file": csv_names[0],
