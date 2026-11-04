@@ -19,10 +19,18 @@ def metadata():
     }
 
 
+def funding():
+    return [{
+        "funding_time": candles()[0]["timestamp"],
+        "realized_rate": 0.0001,
+        "is_realized": True,
+    }]
+
+
 def test_readiness_requires_matching_completed_trade_and_mark_timestamps():
     trade = candles()
     mark = candles()
-    result = assess_paper_readiness("BTCUSDT", trade, mark, [], metadata())
+    result = assess_paper_readiness("BTCUSDT", trade, mark, funding(), metadata())
     assert result["ready"] is True
     assert result["reasons"] == []
     assert result["live_trading_enabled"] is False
@@ -32,14 +40,14 @@ def test_readiness_blocks_mismatched_mark_price_history():
     trade = candles()
     mark = candles()
     mark.pop()
-    result = assess_paper_readiness("BTCUSDT", trade, mark, [], metadata())
+    result = assess_paper_readiness("BTCUSDT", trade, mark, funding(), metadata())
     assert result["ready"] is False
     assert "trade_mark_timestamps_not_identical" in result["reasons"]
 
 
 def test_readiness_blocks_short_history_and_missing_metadata():
     trade = candles(30)
-    result = assess_paper_readiness("BTCUSDT", trade, trade, [], None)
+    result = assess_paper_readiness("BTCUSDT", trade, trade, funding(), None)
     assert result["ready"] is False
     assert "insufficient_completed_trade_history" in result["reasons"]
     assert "binance_instrument_metadata_unavailable" in result["reasons"]
@@ -62,3 +70,27 @@ def test_readiness_blocks_wrong_native_instrument_identity():
     })
     assert result["ready"] is False
     assert "binance_instrument_identity_mismatch" in result["reasons"]
+
+
+
+def test_readiness_blocks_missing_realized_funding_history():
+    trade = candles()
+    result = assess_paper_readiness("BTCUSDT", trade, trade, [], metadata())
+    assert result["ready"] is False
+    assert "realized_funding_history_unavailable" in result["reasons"]
+
+
+def test_readiness_blocks_gaps_in_hourly_trade_candles():
+    trade = candles()
+    trade[30]["timestamp"] = (datetime.fromisoformat(trade[30]["timestamp"]) + timedelta(hours=1)).isoformat()
+    result = assess_paper_readiness("BTCUSDT", trade, trade, funding(), metadata())
+    assert result["ready"] is False
+    assert "trade_candle_timeline_has_gaps" in result["reasons"]
+
+
+def test_readiness_blocks_non_realized_funding_rows():
+    trade = candles()
+    records = [{**funding()[0], "is_realized": False}]
+    result = assess_paper_readiness("BTCUSDT", trade, trade, records, metadata())
+    assert result["ready"] is False
+    assert "funding_history_contains_non_realized_record" in result["reasons"]
