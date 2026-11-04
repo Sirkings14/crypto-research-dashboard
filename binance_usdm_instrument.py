@@ -103,6 +103,7 @@ def parse_usdm_instrument_metadata(exchange_info: dict[str, Any], symbol: str) -
     return {
         "provider": "binance_usdm_exchange_info",
         "symbol": symbol,
+        "instrument": symbol,
         "instrument_type": "SWAP",
         "contract_type": "linear",
         "contract_type_source": item.get("contractType"),
@@ -116,13 +117,20 @@ def parse_usdm_instrument_metadata(exchange_info: dict[str, Any], symbol: str) -
         "contract_value_currency": base,
         "contract_multiplier": "1",
         "contract_unit": "base_asset_quantity",
-        "lot_size_contracts": str(step_size),
-        "minimum_size_contracts": str(min_qty),
-        "maximum_size_contracts": str(max_qty),
+        # The paper ledger uses market-style fills, so its sizing increments
+        # must follow MARKET_LOT_SIZE rather than the generic LOT_SIZE filter.
+        "lot_size_contracts": str(market_step_size),
+        "minimum_size_contracts": str(market_min_qty),
+        "maximum_size_contracts": str(market_max_qty),
         "market_lot_size": {
             "step_size": str(market_step_size),
             "minimum_quantity": str(market_min_qty),
             "maximum_quantity": str(market_max_qty),
+        },
+        "limit_order_lot_size": {
+            "step_size": str(step_size),
+            "minimum_quantity": str(min_qty),
+            "maximum_quantity": str(max_qty),
         },
         "price_tick_size": str(tick_size),
         "minimum_notional_usdt": str(min_notional),
