@@ -73,6 +73,15 @@ def contracts_for_notional(
         contract_notional_usdt(metadata, mark_price), "contract_notional_usdt"
     )
     _, lot_size, minimum, _, _ = _instrument_values(metadata)
+    # Check the exchange's quote-currency floor before quantity rounding so
+    # the requested budget receives the correct minimum-notional diagnostic.
+    minimum_notional_raw = metadata.get("minimum_notional_usdt")
+    minimum_notional = None
+    if minimum_notional_raw not in (None, ""):
+        minimum_notional = _positive_decimal(minimum_notional_raw, "minimum_notional_usdt")
+        if target < minimum_notional:
+            raise ValueError("target notional is below the instrument minimum notional")
+
     raw_contracts = target / per_contract
     lots = (raw_contracts / lot_size).to_integral_value(rounding=ROUND_DOWN)
     contracts = lots * lot_size
@@ -88,11 +97,8 @@ def contracts_for_notional(
         if contracts > maximum:
             raise ValueError("target notional exceeds the instrument maximum quantity")
 
-    minimum_notional_raw = metadata.get("minimum_notional_usdt")
-    if minimum_notional_raw not in (None, ""):
-        minimum_notional = _positive_decimal(minimum_notional_raw, "minimum_notional_usdt")
-        if actual_notional < minimum_notional:
-            raise ValueError("sized notional is below the instrument minimum notional")
+    if minimum_notional is not None and actual_notional < minimum_notional:
+        raise ValueError("sized notional is below the instrument minimum notional")
 
     return {
         "contracts": float(contracts),
