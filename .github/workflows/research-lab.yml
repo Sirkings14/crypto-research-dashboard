@@ -22,6 +22,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - "binance_usdm_worker.py"
       - "binance_usdm_data.py"
       - "binance_usdm_instrument.py"
       - "strategy_lab.py"
