@@ -451,39 +451,44 @@ def main() -> None:
         f"{snapshot['ready_count']} paper-ready; {snapshot['failure_count']} source failures."
     )
     if snapshot["source_status"] == "blocked_by_http_451":
-        archive_probe = probe_binance_vision_archives()
-        snapshot["official_archive_probe"] = archive_probe
-        if archive_probe.get("all_available") is True:
-            archive_session = requests.Session()
-            archive_inspections = {
-                symbol: inspect_binance_vision_archives(
-                    session=archive_session, month=archive_probe["month"], symbol=symbol
-                )
-                for symbol in DEFAULT_SYMBOLS
-            }
-            snapshot["official_archive_inspections"] = archive_inspections
+        archive_session = requests.Session()
+        archive_audits = {}
+        for month in previous_month_labels(count=2):
+            archive_probe = probe_binance_vision_archives(
+                session=archive_session, month=month
+            )
+            month_audit = {"probe": archive_probe, "symbols": {}}
+            if archive_probe.get("all_available") is True:
+                month_audit["symbols"] = {
+                    symbol: inspect_binance_vision_archives(
+                        session=archive_session, month=month, symbol=symbol
+                    )
+                    for symbol in DEFAULT_SYMBOLS
+                }
+            archive_audits[month] = month_audit
+        snapshot["official_archive_audits"] = archive_audits
         _atomic_json(SNAPSHOT_OUTPUT, snapshot)
         print(
             "SKIPPED: GitHub-hosted runner is blocked by HTTP 451 on Binance USD-M REST endpoints. "
-            "No Binance dataset is paper-ready; checking checksums and schemas of official historical archives."
+            "No Binance dataset is paper-ready; auditing the two latest complete official archive months."
         )
-        if archive_probe.get("all_available") is True:
-            for symbol, inspection in snapshot["official_archive_inspections"].items():
+        for month, month_audit in archive_audits.items():
+            print(f"Binance Vision archive month {month}:")
+            if not month_audit["symbols"]:
+                print("  archive files unavailable")
+                continue
+            for symbol, inspection in month_audit["symbols"].items():
                 print(
-                    f"Binance Vision {symbol}: "
-                    f"all_checksums_valid={inspection.get('all_checksums_valid', False)}"
+                    f"  {symbol}: all_checksums_valid={inspection.get('all_checksums_valid', False)}"
                 )
                 for name, result in inspection["files"].items():
                     coverage = result.get("coverage", {})
                     print(
-                        f"  {name}: checksum_valid={result.get('checksum_valid', False)} "
+                        f"    {name}: checksum_valid={result.get('checksum_valid', False)} "
                         f"rows={result.get('row_count', 0)} "
                         f"missing_hours={coverage.get('missing_hour_count', 'n/a')} "
                         f"funding_offsets_ms={coverage.get('timestamp_offsets_within_hour_ms', 'n/a')}"
                     )
-        else:
-            for name, result in archive_probe["files"].items():
-                print(f"Binance Vision {name}: HTTP {result.get('status_code', 'unavailable')}")
         return
     if snapshot["success_count"] == 0:
         raise RuntimeError("No Binance USD-M trade datasets were collected; inspect the snapshot artifact.")
