@@ -193,3 +193,11 @@ The September funding timestamps were observed 0–9ms after their hourly candle
 September is a candidate for a controlled historical pipeline test, not evidence of strategy profitability or a current market feed. October's gaps must not be filled by forward-filling prices or silently substituting another venue.
 
 Official archive documentation: [Binance Public Data](https://github.com/binance/binance-public-data).
+
+### Checksum-verified monthly archive ingestion
+
+`binance_usdm_archive.py` and `binance_usdm_archive_worker.py` now provide a separate historical-only ingestion path for Binance Vision monthly USD-M archives. The worker downloads the trade-kline, mark-price-kline and funding-rate ZIPs for all seven research symbols, verifies each ZIP against its companion `.CHECKSUM` file before parsing, and preserves the normalized dataset as a GitHub Actions artifact. It requires complete month-long hourly coverage, exactly aligned trade/mark timestamps, strictly chronological funding records and funding settlement offsets no greater than 10ms after the hourly open. Missing candles are rejected; there is no forward-fill or cross-venue substitution.
+
+The first successful September 2026 ingestion (GitHub Actions run [41876799253](https://github.com/Sirkings14/crypto-research-dashboard/actions/runs/41876799253)) validated all seven symbols: each had 720 trade candles, 720 mark-price candles and 90 realized funding records; all 42 ZIP/checksum pairs passed; trade and mark timelines matched with zero gaps. The normalized dataset is preserved in artifact `binance-usdm-monthly-archive-2026-09`. Funding archive rows do not contain event mark prices, so records explicitly preserve a missing event mark and disclose the mark-candle-open proxy required by the paper ledger. This archive is historical evidence only and does not restore the blocked live REST feed or establish profitability.
+
+The ingestion workflow can be run manually for another complete month or is triggered by changes to the archive ingestion code. It is not scheduled as a live market feed.
