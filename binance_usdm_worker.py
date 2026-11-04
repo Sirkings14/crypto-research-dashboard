@@ -456,7 +456,9 @@ def main() -> None:
                     f"rows={result.get('row_count', 0)} "
                     f"first={coverage.get('first_timestamp_ms')} "
                     f"last={coverage.get('last_timestamp_ms')} "
-                    f"hourly_gaps={coverage.get('hourly_gap_count', 'n/a')}"
+                    f"hourly_gaps={coverage.get('hourly_gap_count', 'n/a')} "
+                    f"missing_hours={coverage.get('missing_hour_count', 'n/a')} "
+                    f"funding_offsets_ms={coverage.get('timestamp_offsets_within_hour_ms', 'n/a')}"
                 )
         else:
             for name, result in archive_probe["files"].items():
