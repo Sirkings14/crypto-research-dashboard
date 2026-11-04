@@ -160,3 +160,12 @@ The current venue decision, Burkina Faso availability checks, source separation 
 `binance_usdm_data.py` is a separate read-only adapter for Binance USDⓈ-M public trade candles, mark-price candles and historical funding records. Trade and mark-price series remain separate; candle parsing validates chronology, OHLC values and completed-bar timestamps, while funding records are deduplicated and ordered by settlement time. This adapter is tested with mocked API responses and does not access a Binance account, use API keys, configure leverage or place orders.
 
 The adapter is not yet the active Futures data source for the scheduled portfolio worker. GitHub Actions previously received HTTP 451 from Binance USD-M endpoints; a live endpoint check must succeed before switching a market from the explicitly labelled OKX research feed. Never silently substitute one venue's funding, mark prices or contract rules for another venue. Live trading remains disabled.
+
+
+## Binance USD-M instrument metadata (read-only)
+
+`binance_usdm_instrument.py` reads public `/fapi/v1/exchangeInfo` rules and normalizes active USDT-margined perpetuals for the existing linear-contract accounting primitives. It validates the PERPETUAL/TRADING state, USDT quote and margin assets, price tick, quantity step/minimum/maximum, market-quantity filters and minimum notional. Binance Futures order quantity is expressed in base-asset units; the adapter represents one quantity unit as one base-asset unit and keeps that convention explicit in metadata. It does not copy OKX contract multipliers or treat Binance quantities as OKX contract counts.
+
+The exchange-info maintenance-margin and liquidation-fee fields are retained only as references. They are not a substitute for account-specific leverage brackets or a complete liquidation model. This metadata adapter is not wired into the portfolio worker yet; source switching requires a separate end-to-end validation of trade candles, mark candles, funding timestamps and execution assumptions. It has no account access, API credentials, leverage configuration or order placement. `live_trading_enabled` remains false.
+
+Official Binance USD-M API reference: [Exchange Information and market-data endpoints](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data).
