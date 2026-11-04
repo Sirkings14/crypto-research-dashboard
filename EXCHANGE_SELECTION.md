@@ -3,20 +3,20 @@
 **Decision date:** 2026-11-02  
 **Primary candidate:** Binance  
 **Read-only derivatives data fallback:** OKX  
-**Account status:** user reports Binance account is verified and working; no funds deposited  
+**Account status:** user reports verified Binance account; USDⓈ-M Futures and BTCUSDT perpetual are visible; no funds deposited  
 **Execution status:** disabled; no API credentials or order placement
 
 ## Why Binance is the primary candidate
 
 The operator is based in Burkina Faso. Binance's country/app-support page, updated 2026-08-18, lists Burkina Faso as available. Binance also documents XOF among supported fiat currencies and describes African fiat/P2P access in more than 30 countries. These are useful accessibility signals, but they do **not** prove that every payment rail, deposit/withdrawal method, or derivatives product is available to this particular account.
 
-Account-level update: the user confirms their Binance account is verified and working, with no funds deposited. No deposit is needed for this engineering phase. Before venue-specific Futures simulation or any later execution, the remaining checks are:
+Account-level update: the user confirms the account is verified and working, and has now confirmed that the USDⓈ-M Futures section and BTCUSDT perpetual are visible in the app. No funds have been deposited and none are needed for this engineering phase. Remaining checks are:
 
-1. Confirm USDⓈ-M perpetual Futures is enabled for this verified account, if Futures is to be used.
-2. Confirm the desired XOF deposit/withdrawal or P2P payment method is displayed in the account and review its fees/counterparty terms before choosing to fund the account.
-3. Verify the specific contracts, margin mode, maintenance-margin brackets, liquidation-fee rules and applicable fee tier in Binance's current product documentation/account interface.
+1. Confirm any desired XOF deposit/withdrawal or P2P payment method directly in the account and review its fees/counterparty terms before choosing to fund it. This is not required for the current build.
+2. Verify contract-specific margin mode, maintenance-margin brackets, liquidation-fee rules and the applicable account fee tier before any margin-sensitive paper simulation or later execution.
+3. Keep account API permissions unverified until explicitly inspected in the account interface; no credentials or API secrets should be shared in chat.
 
-App availability is not the same as product eligibility. No VPN, false residence, borrowed identity, or other restriction circumvention is acceptable. If Futures is not enabled for the verified account, the system must remain Spot-only for any venue-linked paper workflow; it must not route Futures orders elsewhere automatically.
+The app confirmation establishes visible product access, not account-specific API permission or the availability of every contract and funding rail. No VPN, false residence, borrowed identity, or other restriction circumvention is acceptable.
 
 ## Why OKX remains in the research data stack
 
@@ -32,7 +32,7 @@ Therefore:
 
 - **Bybit:** not selected as the primary venue. Its fiat-service provider's restricted KYC-country list includes Burkina Faso, which is a material limitation for funding/withdrawal routes. Its platform-wide excluded-jurisdiction list is a separate list and does not itself establish every product's availability.
 - **OKX:** retained as the current read-only derivatives data provider. Its published app-availability list we reviewed did not list Burkina Faso, so we will not assume account eligibility from public market-data access alone.
-- **Binance:** best current candidate based on its explicit Burkina Faso app-support listing and XOF/Africa access documentation, subject to account-level KYC and product confirmation.
+- **Binance:** best current candidate based on its explicit Burkina Faso app-support listing and XOF/Africa access documentation, with visible USDⓈ-M Futures/BTCUSDT access now confirmed, while account-specific API permissions, fee tier, margin settings and funding rails remain unverified.
 
 ## Safe implementation sequence
 
@@ -41,7 +41,7 @@ Therefore:
 3. Build Binance public Spot market-data support and validate it in GitHub Actions before changing any research baselines.
 4. Investigate Binance USDⓈ-M public data separately. HTTP 451 from the Actions runner must be recorded as a source-access failure, not silently bypassed.
 5. Keep OKX swap data as a clearly labelled research fallback; do not silently substitute it for Binance data.
-6. Only after the account owner confirms product eligibility, collect official account-specific contract rules and calibrate fee, funding, maintenance-margin tier and liquidation models.
+6. With USDⓈ-M/BTCUSDT visibility confirmed, validate the public contract rules in the isolated Binance worker first. Before any account-specific margin simulation, verify the account's margin mode, fee tier, maintenance-margin brackets and liquidation rules through official account documentation/interface.
 7. Any later private API integration starts read-only, with minimum permissions and no withdrawal permission. Order placement remains a separate explicitly approved project phase.
 
 ## Current safety boundary
@@ -62,3 +62,8 @@ A separate `binance_usdm_data.py` adapter now fetches public USDⓈ-M trade cand
 ## USDⓈ-M app access confirmed
 
 The user confirms the USDⓈ-M Futures section and BTCUSDT perpetual are visible in the verified Binance app. The public-data worker now probes Binance's separate USD-M trade candles, mark-price candles, realized funding history and public exchangeInfo rules. This app confirmation is not treated as proof of account-specific fee tier, leverage brackets, margin settings, or permission for any API operation. No deposit, private API key or live order is required for the current work.
+
+
+## GitHub runner verification status
+
+The isolated Binance USD-M scheduled workflow has been added to test public endpoint access from GitHub Actions. Its first run is queued; until it completes and produces a diagnostic artifact, runner reachability remains unverified. The connected Binance data source can return public USD-M exchange information, tickers, trade candles, mark-price candles and funding history, but that does not prove GitHub-hosted runner access.
