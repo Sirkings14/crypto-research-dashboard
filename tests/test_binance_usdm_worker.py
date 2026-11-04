@@ -45,6 +45,20 @@ def funding():
     }]
 
 
+def test_previous_month_labels_are_calendar_correct_across_year_boundary():
+    now = datetime(2027, 1, 4, tzinfo=timezone.utc)
+    assert previous_month_labels(count=3, now=now) == [
+        "2026-12", "2026-11", "2026-10"
+    ]
+
+
+def test_previous_month_labels_reject_naive_datetime():
+    import pytest
+
+    with pytest.raises(ValueError, match="timezone"):
+        previous_month_labels(now=datetime(2026, 11, 4))
+
+
 def test_http_451_is_classified_as_runner_block_not_market_data():
     failures = [
         {"symbol": symbol, "error": "451 Client Error: unavailable"}
