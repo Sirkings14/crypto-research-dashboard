@@ -47,6 +47,8 @@ def assess_paper_readiness(
     reasons: list[str] = []
     if len(trade_candles) < 60:
         reasons.append("insufficient_completed_trade_history")
+    if not funding_history:
+        reasons.append("realized_funding_history_unavailable")
     trade_stamps = [row.get("timestamp") for row in trade_candles]
     mark_stamps = [row.get("timestamp") for row in mark_candles]
     if not trade_stamps or trade_stamps != mark_stamps:
@@ -61,15 +63,27 @@ def assess_paper_readiness(
             reasons.append("unexpected_instrument_metadata_provider")
 
     if trade_stamps:
-        start = datetime.fromisoformat(trade_stamps[0].replace("Z", "+00:00"))
-        end = datetime.fromisoformat(trade_stamps[-1].replace("Z", "+00:00"))
+        parsed_stamps = [
+            datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+            for value in trade_stamps
+        ]
+        if any(
+            (right - left).total_seconds() != 3600
+            for left, right in zip(parsed_stamps, parsed_stamps[1:])
+        ):
+            reasons.append("trade_candle_timeline_has_gaps")
+        start, end = parsed_stamps[0], parsed_stamps[-1]
+        candle_stamps = set(parsed_stamps)
         for record in funding_history:
             try:
-                stamp = datetime.fromisoformat(record["funding_time"].replace("Z", "+00:00"))
+                if record.get("realized_rate") is None or record.get("is_realized") is not True:
+                    reasons.append("funding_history_contains_non_realized_record")
+                    break
+                stamp = datetime.fromisoformat(record["funding_time"].replace("Z", "+00:00")).astimezone(timezone.utc)
             except (KeyError, TypeError, ValueError):
                 reasons.append("invalid_funding_timestamp")
                 break
-            if start <= stamp <= end and stamp.isoformat() not in set(trade_stamps):
+            if start <= stamp <= end and stamp not in candle_stamps:
                 reasons.append("funding_settlement_not_aligned_to_candle_open")
                 break
 
