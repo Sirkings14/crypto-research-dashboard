@@ -141,7 +141,12 @@ def parse_usdm_instrument_metadata(exchange_info: dict[str, Any], symbol: str) -
     }
 
 
+def fetch_usdm_exchange_info(*, session=None, retries: int = 3) -> dict[str, Any]:
+    """Fetch the public USD-M exchange catalogue once for multi-symbol scans."""
+    return _request_exchange_info(session=session, retries=retries)
+
+
 def fetch_usdm_instrument_metadata(symbol: str, *, session=None, retries: int = 3) -> dict[str, Any]:
     """Fetch and normalize current Binance USD-M metadata for one symbol."""
-    payload = _request_exchange_info(session=session, retries=retries)
+    payload = fetch_usdm_exchange_info(session=session, retries=retries)
     return parse_usdm_instrument_metadata(payload, symbol)
