@@ -144,10 +144,13 @@ def run_futures_paper_replay(
     if daily_limit > 100 or drawdown_limit > 100:
         raise ValueError("risk limits must not exceed 100 percent")
 
-    funding_by_time: dict[datetime, float] = {}
+    funding_by_index: dict[int, list[dict[str, Any]]] = {}
     previous_funding_time = None
+    seen_funding_times: set[datetime] = set()
     excluded_unrealized = 0
     excluded_outside_window = 0
+    funding_alignment_tolerance_ms = 10.0
+    funding_window_end = stamps[-1] + timedelta(milliseconds=funding_alignment_tolerance_ms)
     for record in funding_history:
         if not isinstance(record, dict):
             raise ValueError("funding records must be objects")
@@ -165,15 +168,28 @@ def run_futures_paper_replay(
         if previous_funding_time is not None and stamp <= previous_funding_time:
             raise ValueError("funding history must be strictly chronological")
         previous_funding_time = stamp
-        if stamp < stamps[0] or stamp > stamps[-1]:
+        if stamp < stamps[0] or stamp > funding_window_end:
             excluded_outside_window += 1
             continue
-        if stamp in funding_by_time:
+        if stamp in seen_funding_times:
             raise ValueError("duplicate funding settlement timestamp")
-        funding_by_time[stamp] = rate_value
+        seen_funding_times.add(stamp)
 
-    if any(stamp not in stamps for stamp in funding_by_time):
-        raise ValueError("funding settlement does not align to a candle boundary; refusing to approximate")
+        candle_index = bisect_right(stamps, stamp) - 1
+        if candle_index < 0:
+            excluded_outside_window += 1
+            continue
+        offset_ms = (stamp - stamps[candle_index]).total_seconds() * 1000.0
+        if offset_ms < 0 or offset_ms > funding_alignment_tolerance_ms:
+            raise ValueError(
+                "funding settlement is more than 10ms after a candle open; refusing to approximate"
+            )
+        funding_by_index.setdefault(candle_index, []).append({
+            "timestamp": stamp,
+            "realized_rate": rate_value,
+            "offset_ms": offset_ms,
+            "mark_price": record.get("mark_price"),
+        })
 
     cash = initial
     position: dict[str, Any] | None = None
