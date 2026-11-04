@@ -135,7 +135,7 @@ def test_rejects_funding_timestamp_not_on_candle_boundary():
     trade, mark = rows([(60_000, 60_000), (60_000, 60_000)])
     funding = [{"funding_time": (BASE + timedelta(minutes=30)).isoformat(),
                 "realized_rate": 0.001}]
-    with pytest.raises(ValueError, match="does not align"):
+    with pytest.raises(ValueError, match="more than 10ms"):
         replay(trade, mark, ["long", "flat"], funding)
 
 
