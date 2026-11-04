@@ -169,3 +169,12 @@ The adapter is not yet the active Futures data source for the scheduled portfoli
 The exchange-info maintenance-margin and liquidation-fee fields are retained only as references. They are not a substitute for account-specific leverage brackets or a complete liquidation model. This metadata adapter is not wired into the portfolio worker yet; source switching requires a separate end-to-end validation of trade candles, mark candles, funding timestamps and execution assumptions. It has no account access, API credentials, leverage configuration or order placement. `live_trading_enabled` remains false.
 
 Official Binance USD-M API reference: [Exchange Information and market-data endpoints](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data).
+
+
+## Binance USD-M isolated public-data worker
+
+`binance_usdm_worker.py` collects a separate Binance USD-M dataset for each initial-universe perpetual: 100 completed hourly trade candles, 100 completed hourly mark-price candles, up to 100 realized funding observations, and public exchange contract metadata. It writes its own snapshot and analysis artifacts and never merges Binance Futures records into the OKX dataset. The readiness gate requires at least 60 completed trade candles, exact trade/mark timestamp alignment, valid native Binance instrument identity, and any funding settlement inside the replay window to align exactly with a candle open.
+
+The scheduled `.github/workflows/binance-usdm-scan.yml` workflow independently tests whether GitHub Actions can reach Binance USD-M public endpoints. It preserves diagnostic artifacts even when collection fails and reports zero paper-ready datasets as a failed validation. A successful public-data scan is not account authentication or proof of profitability.
+
+Binance USD-M market paper sizing uses `MARKET_LOT_SIZE` for simulated market fills, while preserving `LOT_SIZE` separately for limit-order reference. Minimum notional is included in portfolio minimum-lot allocation. The paper ledger accepts Binance's native symbol identity and base-asset quantity convention; it still uses 1x fixed-notional research assumptions, not Binance margin tiers or liquidation rules. No order API, credentials, deposits or live execution are involved.
