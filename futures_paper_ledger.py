@@ -405,7 +405,11 @@ def run_futures_paper_replay(
             "slippage_bps_per_side": slip_bps,
             "execution": "trade candle open with adverse fixed slippage",
             "valuation": "mark-price candle close",
-            "funding": "realized rates only; exact candle-open settlements; prior position only",
+            "funding": (
+                "realized rates only; exact-open events apply to the carried position before the signal; "
+                "events 1-10ms after open apply after the candle-open signal; use event mark price when "
+                "provided, otherwise the candle-open mark-price proxy"
+            ),
             "risk_limits": {
                 "max_daily_loss_pct": daily_limit,
                 "max_drawdown_pct": drawdown_limit,
