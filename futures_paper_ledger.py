@@ -7,7 +7,8 @@ not receive/pay that settlement. No exchange connection or live execution.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from bisect import bisect_right
+from datetime import datetime, timedelta, timezone
 from math import isfinite
 from typing import Any
 
