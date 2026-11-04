@@ -1,9 +1,10 @@
 """Deterministic single-instrument linear USDT perpetual paper replay.
 
 Signals are assumed to be known at each candle open (i.e. produced from prior
-completed information). Funding is settled at exact candle-open timestamps
-before a new signal is applied, so a position opened at that timestamp does
-not receive/pay that settlement. No exchange connection or live execution.
+completed information). Realized funding exactly at candle open is settled
+against the carried position before the new signal; events up to 10ms after
+open are settled after the candle-open signal. This preserves observed Binance
+funding timestamps without silently rounding them. No live execution.
 """
 from __future__ import annotations
 
