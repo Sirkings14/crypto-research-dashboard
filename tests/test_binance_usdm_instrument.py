@@ -36,8 +36,11 @@ def test_normalizes_binance_quantity_as_base_asset_units():
     assert result["contract_value"] == "1"
     assert result["contract_value_currency"] == "BTC"
     assert result["contract_unit"] == "base_asset_quantity"
+    assert result["instrument"] == "BTCUSDT"
     assert result["lot_size_contracts"] == "0.001"
     assert result["minimum_size_contracts"] == "0.001"
+    assert result["maximum_size_contracts"] == "120"
+    assert result["limit_order_lot_size"]["maximum_quantity"] == "1000"
     assert result["price_tick_size"] == "0.10"
     assert result["minimum_notional_usdt"] == "50"
     assert result["live_trading_enabled"] is False
