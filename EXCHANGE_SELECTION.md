@@ -66,4 +66,6 @@ The user confirms the USDⓈ-M Futures section and BTCUSDT perpetual are visible
 
 ## GitHub runner verification status
 
-The isolated Binance USD-M scheduled workflow has been added to test public endpoint access from GitHub Actions. Its first run is queued; until it completes and produces a diagnostic artifact, runner reachability remains unverified. The connected Binance data source can return public USD-M exchange information, tickers, trade candles, mark-price candles and funding history, but that does not prove GitHub-hosted runner access.
+The first completed GitHub Actions Binance USD-M probe (2026-11-04) returned HTTP 451 from the hosted runner for `/fapi/v1/exchangeInfo` and all seven `/fapi/v1/klines` requests. The diagnostic artifact confirms zero datasets collected and zero paper-ready markets. This is a runner/network restriction, not evidence that the user's verified Binance account or visible USDⓈ-M product is unavailable.
+
+The worker now records `source_status: blocked_by_http_451`, preserves the diagnostics and exits as an explicit provider skip rather than presenting the known runner restriction as a code defect. The dedicated workflow reports a warning and remains non-paper-ready. Binance USD-M must not be used by the portfolio replay until the runner can fetch and validate Binance trade candles, mark-price candles, funding and contract rules. The existing OKX derivatives data remains a separate read-only research source; no venue data is silently substituted.
