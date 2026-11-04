@@ -295,7 +295,7 @@ def assess_paper_readiness(
         ):
             reasons.append("trade_candle_timeline_has_gaps")
         start, end = parsed_stamps[0], parsed_stamps[-1]
-        candle_stamps = set(parsed_stamps)
+        funding_window_end = end.timestamp() + 0.010
         for record in funding_history:
             try:
                 if record.get("realized_rate") is None or record.get("is_realized") is not True:
@@ -305,9 +305,15 @@ def assess_paper_readiness(
             except (KeyError, TypeError, ValueError):
                 reasons.append("invalid_funding_timestamp")
                 break
-            if start <= stamp <= end and stamp not in candle_stamps:
-                reasons.append("funding_settlement_not_aligned_to_candle_open")
-                break
+            if start <= stamp and stamp.timestamp() <= funding_window_end:
+                candle_index = bisect_right(parsed_stamps, stamp) - 1
+                if candle_index < 0:
+                    reasons.append("funding_settlement_not_aligned_within_10ms_of_candle_open")
+                    break
+                offset_ms = (stamp - parsed_stamps[candle_index]).total_seconds() * 1000.0
+                if offset_ms < 0 or offset_ms > 10:
+                    reasons.append("funding_settlement_not_aligned_within_10ms_of_candle_open")
+                    break
 
     return {
         "ready": not reasons,
