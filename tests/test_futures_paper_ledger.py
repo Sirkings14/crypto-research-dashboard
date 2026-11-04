@@ -168,3 +168,23 @@ def test_rejects_target_notional_above_cap():
             target_sides=["long", "flat"], initial_equity_usdt=2_000,
             target_notional_usdt=700, max_notional_usdt=600,
         )
+
+
+
+def test_binance_usdm_metadata_native_symbol_is_accepted_by_paper_ledger():
+    from binance_usdm_instrument import parse_usdm_instrument_metadata
+
+    exchange = {"symbols": [{
+        "symbol": "BTCUSDT", "status": "TRADING", "contractType": "PERPETUAL",
+        "baseAsset": "BTC", "quoteAsset": "USDT", "marginAsset": "USDT",
+        "filters": [
+            {"filterType": "PRICE_FILTER", "tickSize": "0.1"},
+            {"filterType": "LOT_SIZE", "minQty": "0.001", "maxQty": "1000", "stepSize": "0.001"},
+            {"filterType": "MARKET_LOT_SIZE", "minQty": "0.001", "maxQty": "100", "stepSize": "0.001"},
+            {"filterType": "MIN_NOTIONAL", "notional": "50"},
+        ],
+    }]}
+    metadata = parse_usdm_instrument_metadata(exchange, "BTCUSDT")
+    assert metadata["instrument"] == "BTCUSDT"
+    assert metadata["lot_size_contracts"] == "0.001"
+    assert metadata["maximum_size_contracts"] == "100"
