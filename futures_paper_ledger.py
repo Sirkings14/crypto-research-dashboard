@@ -115,9 +115,12 @@ def run_futures_paper_replay(
     if not isinstance(instrument_metadata, dict):
         raise ValueError("instrument metadata must be an object")
     validate_linear_usdt_swap_metadata(instrument_metadata)
-    expected_instrument = f"{symbol[:-4]}-USDT-SWAP"
-    if instrument_metadata.get("instrument") != expected_instrument:
+    expected_instruments = {f"{symbol[:-4]}-USDT-SWAP", symbol}
+    if instrument_metadata.get("instrument") not in expected_instruments:
         raise ValueError("instrument metadata does not match the requested symbol")
+    if instrument_metadata.get("provider") == "binance_usdm_exchange_info":
+        if instrument_metadata.get("instrument") != symbol:
+            raise ValueError("Binance USD-M metadata must identify the native symbol")
     if str(instrument_metadata.get("contract_value_currency", "")).upper() not in {symbol[:-4], "USDT"}:
         raise ValueError("contract value currency is not supported for the requested symbol")
     trades, marks, stamps = _validate_candles(trade_candles, mark_candles)
