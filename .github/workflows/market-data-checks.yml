@@ -8,8 +8,10 @@ on:
       - "binance_usdm_instrument.py"
       - "binance_usdm_worker.py"
       - "binance_usdm_archive.py"
+      - "binance_usdm_archive_analysis.py"
       - "binance_usdm_archive_worker.py"
       - "tests/test_binance_usdm_archive.py"
+      - "tests/test_binance_usdm_archive_analysis.py"
       - "tests/test_binance_usdm_worker.py"
       - "tests/test_binance_usdm_instrument.py"
       - "tests/test_binance_usdm_data.py"
@@ -79,6 +81,6 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt pytest
       - name: Compile market modules
-        run: python -m py_compile binance_usdm_data.py binance_usdm_instrument.py binance_usdm_worker.py binance_usdm_archive.py binance_usdm_archive_worker.py market_universe.py market_universe_worker.py market_analysis.py funding_replay.py futures_contract_math.py futures_paper_ledger.py futures_signal_adapter.py futures_portfolio_coordinator.py futures_portfolio_sizing.py
+        run: python -m py_compile binance_usdm_data.py binance_usdm_instrument.py binance_usdm_worker.py binance_usdm_archive.py binance_usdm_archive_analysis.py binance_usdm_archive_worker.py market_universe.py market_universe_worker.py market_analysis.py funding_replay.py futures_contract_math.py futures_paper_ledger.py futures_signal_adapter.py futures_portfolio_coordinator.py futures_portfolio_sizing.py
       - name: Run the full repository test suite
         run: python -m pytest -q
