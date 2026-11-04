@@ -321,6 +321,7 @@ def assess_paper_readiness(
         "trade_candle_count": len(trade_candles),
         "mark_price_candle_count": len(mark_candles),
         "funding_history_count": len(funding_history),
+        "funding_settlement_alignment_tolerance_ms": 10,
         "live_trading_enabled": False,
     }
 
