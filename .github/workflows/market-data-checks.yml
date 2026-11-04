@@ -4,6 +4,10 @@ on:
   push:
     branches: [phase2-multi-market-data]
     paths:
+      - "binance_usdm_data.py"
+      - "tests/test_binance_usdm_data.py"
+      - "binance_usdm_data.py"
+      - "tests/test_binance_usdm_data.py"
       - "market_universe.py"
       - "market_universe_worker.py"
       - "market_analysis.py"
@@ -61,6 +65,6 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt pytest
       - name: Compile market modules
-        run: python -m py_compile market_universe.py market_universe_worker.py market_analysis.py funding_replay.py futures_contract_math.py futures_paper_ledger.py futures_signal_adapter.py futures_portfolio_coordinator.py futures_portfolio_sizing.py
+        run: python -m py_compile binance_usdm_data.py market_universe.py market_universe_worker.py market_analysis.py funding_replay.py futures_contract_math.py futures_paper_ledger.py futures_signal_adapter.py futures_portfolio_coordinator.py futures_portfolio_sizing.py
       - name: Run the full repository test suite
         run: python -m pytest -q
