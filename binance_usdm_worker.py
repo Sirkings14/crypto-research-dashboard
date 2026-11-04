@@ -206,11 +206,15 @@ def collect_snapshot(
         }
         results.append(dataset)
 
+    source_status = classify_source_status(
+        exchange_info_error, failures, len(results), len(symbols)
+    )
     return {
         "schema_version": 1,
         "mode": "binance_usdm_public_data_only",
         "venue": "binance",
         "product": "usd_m_perpetual",
+        "source_status": source_status,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "interval": "1h",
         "requested_symbols": list(symbols),
