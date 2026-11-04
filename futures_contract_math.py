@@ -79,6 +79,21 @@ def contracts_for_notional(
     if contracts < minimum:
         raise ValueError("target notional is below the instrument minimum contract size")
     actual_notional = contracts * per_contract
+
+    # Exchange-specific quantity and minimum-notional constraints are optional
+    # so existing OKX fixtures remain valid; Binance metadata supplies both.
+    maximum_raw = metadata.get("maximum_size_contracts")
+    if maximum_raw not in (None, ""):
+        maximum = _positive_decimal(maximum_raw, "maximum_size_contracts")
+        if contracts > maximum:
+            raise ValueError("target notional exceeds the instrument maximum quantity")
+
+    minimum_notional_raw = metadata.get("minimum_notional_usdt")
+    if minimum_notional_raw not in (None, ""):
+        minimum_notional = _positive_decimal(minimum_notional_raw, "minimum_notional_usdt")
+        if actual_notional < minimum_notional:
+            raise ValueError("sized notional is below the instrument minimum notional")
+
     return {
         "contracts": float(contracts),
         "contract_lot_size": float(lot_size),
