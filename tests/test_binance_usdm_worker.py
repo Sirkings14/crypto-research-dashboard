@@ -1,6 +1,10 @@
 from datetime import datetime, timedelta, timezone
 
-from binance_usdm_worker import assess_paper_readiness, classify_source_status
+from binance_usdm_worker import (
+    assess_paper_readiness,
+    classify_source_status,
+    probe_binance_vision_archives,
+)
 
 
 def candles(count=100):
