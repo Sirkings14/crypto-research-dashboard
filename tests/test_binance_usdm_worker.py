@@ -58,6 +58,7 @@ def test_readiness_blocks_funding_settlement_inside_window_if_not_candle_aligned
     funding = [{
         "funding_time": (datetime.fromisoformat(trade[20]["timestamp"]) + timedelta(minutes=5)).isoformat(),
         "realized_rate": 0.0001,
+        "is_realized": True,
     }]
     result = assess_paper_readiness("BTCUSDT", trade, trade, funding, metadata())
     assert result["ready"] is False
