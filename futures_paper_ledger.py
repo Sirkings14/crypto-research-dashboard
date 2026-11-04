@@ -169,7 +169,7 @@ def run_futures_paper_replay(
         if previous_funding_time is not None and stamp <= previous_funding_time:
             raise ValueError("funding history must be strictly chronological")
         previous_funding_time = stamp
-        if stamp < stamps[0] or stamp > funding_window_end:
+        if stamp < stamps[0] or stamp >= replay_window_end:
             excluded_outside_window += 1
             continue
         if stamp in seen_funding_times:
