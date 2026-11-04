@@ -27,12 +27,12 @@ jobs:
       - name: Compile archive ingestion modules
         run: python -m py_compile binance_usdm_archive.py binance_usdm_archive_worker.py
       - name: Ingest checksum-verified monthly archives
-        run: python binance_usdm_archive_worker.py --month "$\{{ inputs.month }}"
+        run: python binance_usdm_archive_worker.py --month "${{ inputs.month }}"
       - name: Preserve monthly historical dataset and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: binance-usdm-monthly-archive-$\{{ inputs.month }}
+          name: binance-usdm-monthly-archive-${{ inputs.month }}
           path: data/binance_usdm_archive_latest.json
           if-no-files-found: error
           retention-days: 30
