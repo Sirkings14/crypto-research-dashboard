@@ -4,8 +4,10 @@ on:
     branches: [phase2-multi-market-data]
     paths:
       - "binance_usdm_archive.py"
+      - "binance_usdm_archive_analysis.py"
       - "binance_usdm_archive_worker.py"
       - "tests/test_binance_usdm_archive.py"
+      - "tests/test_binance_usdm_archive_analysis.py"
       - ".github/workflows/binance-usdm-archive-ingest.yml"
   workflow_dispatch:
     inputs:
