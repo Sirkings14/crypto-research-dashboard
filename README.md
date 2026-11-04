@@ -153,3 +153,10 @@ This is intentionally not wired into the existing 1x portfolio replay yet. It us
 ## Exchange selection
 
 The current venue decision, Burkina Faso availability checks, source separation rules and safe rollout sequence are documented in [`EXCHANGE_SELECTION.md`](EXCHANGE_SELECTION.md). Binance is the primary candidate pending account-level KYC and product eligibility confirmation; OKX remains a read-only derivatives market-data source. Live trading remains disabled.
+
+
+## Binance USD-M public data adapter (research only)
+
+`binance_usdm_data.py` is a separate read-only adapter for Binance USDⓈ-M public trade candles, mark-price candles and historical funding records. Trade and mark-price series remain separate; candle parsing validates chronology, OHLC values and completed-bar timestamps, while funding records are deduplicated and ordered by settlement time. This adapter is tested with mocked API responses and does not access a Binance account, use API keys, configure leverage or place orders.
+
+The adapter is not yet the active Futures data source for the scheduled portfolio worker. GitHub Actions previously received HTTP 451 from Binance USD-M endpoints; a live endpoint check must succeed before switching a market from the explicitly labelled OKX research feed. Never silently substitute one venue's funding, mark prices or contract rules for another venue. Live trading remains disabled.
