@@ -438,28 +438,33 @@ def main() -> None:
         archive_probe = probe_binance_vision_archives()
         snapshot["official_archive_probe"] = archive_probe
         if archive_probe.get("all_available") is True:
-            archive_inspection = inspect_binance_vision_archives(
-                month=archive_probe["month"], symbol="BTCUSDT"
-            )
-            snapshot["official_archive_inspection"] = archive_inspection
+            archive_session = requests.Session()
+            archive_inspections = {
+                symbol: inspect_binance_vision_archives(
+                    session=archive_session, month=archive_probe["month"], symbol=symbol
+                )
+                for symbol in DEFAULT_SYMBOLS
+            }
+            snapshot["official_archive_inspections"] = archive_inspections
         _atomic_json(SNAPSHOT_OUTPUT, snapshot)
         print(
             "SKIPPED: GitHub-hosted runner is blocked by HTTP 451 on Binance USD-M REST endpoints. "
             "No Binance dataset is paper-ready; checking checksums and schemas of official historical archives."
         )
         if archive_probe.get("all_available") is True:
-            for name, result in snapshot["official_archive_inspection"]["files"].items():
-                coverage = result.get("coverage", {})
+            for symbol, inspection in snapshot["official_archive_inspections"].items():
                 print(
-                    f"Binance Vision {name}: "
-                    f"checksum_valid={result.get('checksum_valid', False)} "
-                    f"rows={result.get('row_count', 0)} "
-                    f"first={coverage.get('first_timestamp_ms')} "
-                    f"last={coverage.get('last_timestamp_ms')} "
-                    f"hourly_gaps={coverage.get('hourly_gap_count', 'n/a')} "
-                    f"missing_hours={coverage.get('missing_hour_count', 'n/a')} "
-                    f"funding_offsets_ms={coverage.get('timestamp_offsets_within_hour_ms', 'n/a')}"
+                    f"Binance Vision {symbol}: "
+                    f"all_checksums_valid={inspection.get('all_checksums_valid', False)}"
                 )
+                for name, result in inspection["files"].items():
+                    coverage = result.get("coverage", {})
+                    print(
+                        f"  {name}: checksum_valid={result.get('checksum_valid', False)} "
+                        f"rows={result.get('row_count', 0)} "
+                        f"missing_hours={coverage.get('missing_hour_count', 'n/a')} "
+                        f"funding_offsets_ms={coverage.get('timestamp_offsets_within_hour_ms', 'n/a')}"
+                    )
         else:
             for name, result in archive_probe["files"].items():
                 print(f"Binance Vision {name}: HTTP {result.get('status_code', 'unavailable')}")
