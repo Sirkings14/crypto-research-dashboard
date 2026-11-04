@@ -10,13 +10,11 @@
 
 The operator is based in Burkina Faso. Binance's country/app-support page, updated 2026-08-18, lists Burkina Faso as available. Binance also documents XOF among supported fiat currencies and describes African fiat/P2P access in more than 30 countries. These are useful accessibility signals, but they do **not** prove that every payment rail, deposit/withdrawal method, or derivatives product is available to this particular account.
 
-Before treating Binance as an executable venue, the account owner must independently confirm, using their true Burkina Faso residence and identity details:
+Account-level update: the user confirms their Binance account is verified and working, with no funds deposited. No deposit is needed for this engineering phase. Before venue-specific Futures simulation or any later execution, the remaining checks are:
 
-1. KYC verification is accepted for Burkina Faso.
-2. Spot trading is available.
-3. USDⓈ-M perpetual Futures is explicitly enabled for the verified account, if Futures is to be used.
-4. The desired XOF deposit/withdrawal or P2P payment method is displayed in the account and its fees/counterparty terms are acceptable.
-5. The specific contracts, leverage rules, margin mode, maintenance-margin brackets, liquidation-fee rules and fee tier are available in the account's applicable product documentation.
+1. Confirm USDⓈ-M perpetual Futures is enabled for this verified account, if Futures is to be used.
+2. Confirm the desired XOF deposit/withdrawal or P2P payment method is displayed in the account and review its fees/counterparty terms before choosing to fund the account.
+3. Verify the specific contracts, margin mode, maintenance-margin brackets, liquidation-fee rules and applicable fee tier in Binance's current product documentation/account interface.
 
 App availability is not the same as product eligibility. No VPN, false residence, borrowed identity, or other restriction circumvention is acceptable. If Futures is not enabled for the verified account, the system must remain Spot-only for any venue-linked paper workflow; it must not route Futures orders elsewhere automatically.
 
