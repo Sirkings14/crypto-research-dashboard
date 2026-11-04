@@ -96,3 +96,22 @@ def test_rejects_non_live_or_missing_metadata():
         contract_notional_usdt(metadata(instrument_state="suspend"), 60_000)
     with pytest.raises(ValueError, match="contract_value_currency"):
         contract_notional_usdt(metadata(contract_value_currency=None), 60_000)
+
+
+
+def test_exchange_minimum_notional_is_enforced_when_provided():
+    with pytest.raises(ValueError, match="minimum notional"):
+        contracts_for_notional(
+            metadata(minimum_notional_usdt="100"),
+            target_notional_usdt=60,
+            mark_price=60_000,
+        )
+
+
+def test_exchange_maximum_quantity_is_enforced_when_provided():
+    with pytest.raises(ValueError, match="maximum quantity"):
+        contracts_for_notional(
+            metadata(maximum_size_contracts="0.01"),
+            target_notional_usdt=1_000,
+            mark_price=60_000,
+        )
