@@ -99,3 +99,29 @@ def test_fetch_uses_public_exchange_info_endpoint():
     result = fetch_usdm_instrument_metadata("BTCUSDT", session=session)
     assert session.url == EXCHANGE_INFO_URL
     assert result["symbol"] == "BTCUSDT"
+
+
+
+def test_disabled_market_lot_filter_falls_back_to_generic_lot_size():
+    payload = exchange_info()
+    market_filter = next(
+        item for item in payload["symbols"][0]["filters"]
+        if item["filterType"] == "MARKET_LOT_SIZE"
+    )
+    market_filter.update({"minQty": "0", "maxQty": "0", "stepSize": "0"})
+    result = parse_usdm_instrument_metadata(payload, "BTCUSDT")
+    assert result["market_lot_size"]["disabled"] is True
+    assert result["lot_size_contracts"] == "0.001"
+    assert result["minimum_size_contracts"] == "0.001"
+    assert result["maximum_size_contracts"] == "1000"
+
+
+def test_rejects_incompatible_market_and_generic_quantity_steps():
+    payload = exchange_info()
+    market_filter = next(
+        item for item in payload["symbols"][0]["filters"]
+        if item["filterType"] == "MARKET_LOT_SIZE"
+    )
+    market_filter["stepSize"] = "0.0015"
+    with pytest.raises(ValueError, match="increments are incompatible"):
+        parse_usdm_instrument_metadata(payload, "BTCUSDT")
