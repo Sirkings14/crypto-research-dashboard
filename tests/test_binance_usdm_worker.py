@@ -224,6 +224,34 @@ def test_readiness_blocks_short_history_and_missing_metadata():
     assert "binance_instrument_metadata_unavailable" in result["reasons"]
 
 
+def test_readiness_accepts_funding_settlement_within_ten_ms_after_candle_open():
+    trade = candles()
+    record = {
+        "funding_time": (
+            datetime.fromisoformat(trade[20]["timestamp"]) + timedelta(milliseconds=5)
+        ).isoformat(),
+        "realized_rate": 0.0001,
+        "is_realized": True,
+    }
+    result = assess_paper_readiness("BTCUSDT", trade, trade, [record], metadata())
+    assert result["ready"] is True
+    assert result["funding_settlement_alignment_tolerance_ms"] == 10
+
+
+def test_readiness_blocks_funding_settlement_more_than_ten_ms_after_candle_open():
+    trade = candles()
+    record = {
+        "funding_time": (
+            datetime.fromisoformat(trade[20]["timestamp"]) + timedelta(milliseconds=11)
+        ).isoformat(),
+        "realized_rate": 0.0001,
+        "is_realized": True,
+    }
+    result = assess_paper_readiness("BTCUSDT", trade, trade, [record], metadata())
+    assert result["ready"] is False
+    assert "funding_settlement_not_aligned_within_10ms_of_candle_open" in result["reasons"]
+
+
 def test_readiness_blocks_funding_settlement_inside_window_if_not_candle_aligned():
     trade = candles()
     funding = [{
