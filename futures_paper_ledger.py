@@ -216,6 +216,35 @@ def run_futures_paper_replay(
             )
         return cash + unrealized
 
+    def apply_funding_event(event: dict[str, Any], mark_open: float) -> None:
+        nonlocal cash, funding_paid
+        if position is None:
+            return
+        if event.get("mark_price") in (None, ""):
+            funding_mark_price = mark_open
+            mark_price_source = "mark_candle_open_proxy"
+        else:
+            funding_mark_price = _price(event["mark_price"], "funding mark_price")
+            mark_price_source = "funding_record_mark_price"
+        rate = event["realized_rate"]
+        mark_notional = position["contracts"] * contract_notional_usdt(
+            instrument_metadata, funding_mark_price
+        )
+        direction = 1.0 if position["side"] == "long" else -1.0
+        cost = mark_notional * rate * direction
+        cash -= cost
+        funding_paid += cost
+        funding_log.append({
+            "funding_time": event["timestamp"].isoformat(),
+            "funding_timestamp_offset_ms": event["offset_ms"],
+            "side": position["side"],
+            "realized_rate": rate,
+            "mark_price": funding_mark_price,
+            "mark_price_source": mark_price_source,
+            "mark_notional_usdt": mark_notional,
+            "funding_cost_usdt": cost,
+        })
+
     def close_position(timestamp: datetime, raw_price: float, reason: str) -> None:
         nonlocal cash, fees_paid, realized_pnl, position
         if position is None:
