@@ -261,7 +261,7 @@ def test_readiness_blocks_funding_settlement_inside_window_if_not_candle_aligned
     }]
     result = assess_paper_readiness("BTCUSDT", trade, trade, funding, metadata())
     assert result["ready"] is False
-    assert "funding_settlement_not_aligned_to_candle_open" in result["reasons"]
+    assert "funding_settlement_not_aligned_within_10ms_of_candle_open" in result["reasons"]
 
 
 def test_readiness_blocks_wrong_native_instrument_identity():
