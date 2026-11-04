@@ -56,6 +56,62 @@ def classify_source_status(
     return "unavailable"
 
 
+def probe_binance_vision_archives(
+    *,
+    session=None,
+    month: str | None = None,
+    symbol: str = "BTCUSDT",
+) -> dict[str, Any]:
+    """Probe official Binance historical archive files without downloading them.
+
+    This is a historical-data reachability check only. Archive availability
+    does not provide current candles or establish paper-replay readiness.
+    """
+    if not isinstance(symbol, str) or not symbol.isalnum() or not symbol.isupper():
+        raise ValueError("symbol must be an uppercase alphanumeric Binance symbol")
+    if month is None:
+        now = datetime.now(timezone.utc)
+        year, month_number = now.year, now.month - 1
+        if month_number == 0:
+            year, month_number = year - 1, 12
+        month = f"{year:04d}-{month_number:02d}"
+    if not isinstance(month, str) or len(month) != 7 or month[4] != "-":
+        raise ValueError("month must use YYYY-MM format")
+    try:
+        year, month_number = (int(part) for part in month.split("-"))
+        datetime(year, month_number, 1, tzinfo=timezone.utc)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("month must use a valid YYYY-MM value") from exc
+
+    client = session or requests.Session()
+    base = "https://data.binance.vision/data/futures/um/monthly"
+    paths = {
+        "trade_klines": f"{base}/klines/{symbol}/1h/{symbol}-1h-{month}.zip",
+        "mark_price_klines": f"{base}/markPriceKlines/{symbol}/1h/{symbol}-1h-{month}.zip",
+        "funding_rate": f"{base}/fundingRate/{symbol}/{symbol}-fundingRate-{month}.zip",
+    }
+    files: dict[str, dict[str, Any]] = {}
+    for name, url in paths.items():
+        try:
+            response = client.head(url, timeout=15, allow_redirects=True)
+            files[name] = {
+                "url": url,
+                "status_code": int(response.status_code),
+                "available": int(response.status_code) == 200,
+            }
+        except requests.RequestException as exc:
+            files[name] = {"url": url, "available": False, "error": str(exc)}
+    return {
+        "provider": "binance_vision_official_archive",
+        "month": month,
+        "symbol": symbol,
+        "files": files,
+        "all_available": all(item.get("available") is True for item in files.values()),
+        "historical_only": True,
+        "live_trading_enabled": False,
+    }
+
+
 def assess_paper_readiness(
     symbol: str,
     trade_candles: list[dict[str, Any]],
