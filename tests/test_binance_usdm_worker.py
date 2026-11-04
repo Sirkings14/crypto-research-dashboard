@@ -63,6 +63,50 @@ def test_partial_source_failures_are_not_misclassified_as_http_451_skip():
     ) == "unavailable"
 
 
+class HeadResponse:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+
+class HeadSession:
+    def __init__(self, statuses):
+        self.statuses = statuses
+        self.urls = []
+
+    def head(self, url, **kwargs):
+        self.urls.append((url, kwargs))
+        return HeadResponse(self.statuses.pop(0))
+
+
+def test_binance_vision_archive_probe_checks_separate_official_datasets():
+    client = HeadSession([200, 200, 200])
+    result = probe_binance_vision_archives(
+        session=client, month="2026-10", symbol="BTCUSDT"
+    )
+    assert result["all_available"] is True
+    assert result["historical_only"] is True
+    assert set(result["files"]) == {
+        "trade_klines", "mark_price_klines", "funding_rate"
+    }
+    assert all(kwargs["timeout"] == 15 for _, kwargs in client.urls)
+    assert all("data.binance.vision/data/futures/um/monthly/" in url for url, _ in client.urls)
+
+
+def test_binance_vision_archive_probe_fails_closed_when_any_dataset_is_missing():
+    result = probe_binance_vision_archives(
+        session=HeadSession([200, 404, 200]), month="2026-10"
+    )
+    assert result["all_available"] is False
+    assert result["files"]["mark_price_klines"]["available"] is False
+
+
+def test_binance_vision_archive_probe_rejects_invalid_month():
+    import pytest
+
+    with pytest.raises(ValueError, match="valid YYYY-MM"):
+        probe_binance_vision_archives(session=HeadSession([]), month="2026-13")
+
+
 def test_readiness_requires_matching_completed_trade_and_mark_timestamps():
     trade = candles()
     mark = candles()
