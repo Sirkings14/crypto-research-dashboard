@@ -21,6 +21,7 @@ from binance_usdm_instrument import (
     fetch_usdm_exchange_info,
     parse_usdm_instrument_metadata,
 )
+from futures_contract_math import validate_linear_usdt_swap_metadata
 from market_analysis import analyze_dataset
 from market_universe import DEFAULT_SYMBOLS
 
@@ -61,6 +62,19 @@ def assess_paper_readiness(
             reasons.append("binance_instrument_identity_mismatch")
         if instrument_metadata.get("provider") != "binance_usdm_exchange_info":
             reasons.append("unexpected_instrument_metadata_provider")
+        try:
+            validate_linear_usdt_swap_metadata(instrument_metadata)
+        except ValueError:
+            reasons.append("invalid_linear_usdt_instrument_metadata")
+        if instrument_metadata.get("contract_value_currency") != symbol[:-4]:
+            reasons.append("unexpected_contract_quantity_currency")
+        for field in ("lot_size_contracts", "minimum_size_contracts", "maximum_size_contracts", "minimum_notional_usdt"):
+            try:
+                value = float(instrument_metadata[field])
+                if value <= 0:
+                    raise ValueError(field)
+            except (KeyError, TypeError, ValueError):
+                reasons.append(f"invalid_{field}")
 
     if trade_stamps:
         parsed_stamps = [
