@@ -5,6 +5,7 @@ from binance_usdm_worker import (
     classify_source_status,
     probe_binance_vision_archives,
     inspect_binance_vision_archives,
+    previous_month_labels,
 )
 
 
