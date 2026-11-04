@@ -188,3 +188,20 @@ def test_binance_usdm_metadata_native_symbol_is_accepted_by_paper_ledger():
     assert metadata["instrument"] == "BTCUSDT"
     assert metadata["lot_size_contracts"] == "0.001"
     assert metadata["maximum_size_contracts"] == "100"
+
+    trade, mark = rows([(60_000, 60_000), (60_000, 60_000)])
+    result = run_futures_paper_replay(
+        symbol="BTCUSDT",
+        trade_candles=trade,
+        mark_candles=mark,
+        funding_history=[],
+        instrument_metadata=metadata,
+        target_sides=["long", "flat"],
+        initial_equity_usdt=1_000,
+        target_notional_usdt=700,
+        max_notional_usdt=700,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+    )
+    assert result["trade_event_count"] == 2
+    assert result["live_trading_enabled"] is False
