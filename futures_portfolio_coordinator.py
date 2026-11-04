@@ -109,12 +109,14 @@ def run_futures_portfolio_replay(
 
         metadata = item["instrument_metadata"]
         validate_linear_usdt_swap_metadata(metadata)
-        expected_instrument = f"{symbol[:-4]}-USDT-SWAP"
-        if metadata.get("instrument") != expected_instrument:
+        expected_instruments = {f"{symbol[:-4]}-USDT-SWAP", symbol}
+        if metadata.get("instrument") not in expected_instruments:
             raise ValueError(
                 f"{symbol} instrument metadata {metadata.get('instrument')!r} does not match "
-                f"expected {expected_instrument!r}"
+                f"expected one of {sorted(expected_instruments)!r}"
             )
+        if metadata.get("provider") == "binance_usdm_exchange_info" and metadata.get("instrument") != symbol:
+            raise ValueError(f"{symbol} Binance USD-M metadata must identify the native symbol")
         per_contract = contract_notional_usdt(metadata, marks[0].get("close"))
         lot_size = _positive(metadata.get("lot_size_contracts"), f"{symbol} lot_size_contracts")
         minimum_contracts = _positive(
