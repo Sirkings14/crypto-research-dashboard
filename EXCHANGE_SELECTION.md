@@ -57,3 +57,8 @@ Therefore:
 The account owner has confirmed that their Binance account is verified and working, and that no funds have been deposited. This removes the need to treat account KYC as unconfirmed, but it does not by itself confirm USDⓈ-M Futures product access, each desired contract, or available funding/withdrawal rails. No deposit is required for the current engineering phase.
 
 A separate `binance_usdm_data.py` adapter now fetches public USDⓈ-M trade candles, mark-price candles and historical funding records. It is covered by mocked-response tests and is not yet connected to the scheduled portfolio replay. The existing OKX dataset remains explicitly labelled as OKX; switching the replay requires successful Binance public-data validation and Binance-specific contract/fee/margin rules.
+
+
+## USDⓈ-M app access confirmed
+
+The user confirms the USDⓈ-M Futures section and BTCUSDT perpetual are visible in the verified Binance app. The public-data worker now probes Binance's separate USD-M trade candles, mark-price candles, realized funding history and public exchangeInfo rules. This app confirmation is not treated as proof of account-specific fee tier, leverage brackets, margin settings, or permission for any API operation. No deposit, private API key or live order is required for the current work.
