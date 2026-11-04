@@ -16,6 +16,18 @@ def metadata():
         "provider": "binance_usdm_exchange_info",
         "symbol": "BTCUSDT",
         "instrument": "BTCUSDT",
+        "instrument_type": "SWAP",
+        "contract_type": "linear",
+        "settlement_currency": "USDT",
+        "instrument_state": "live",
+        "base_asset": "BTC",
+        "contract_value": "1",
+        "contract_value_currency": "BTC",
+        "contract_multiplier": "1",
+        "lot_size_contracts": "0.001",
+        "minimum_size_contracts": "0.001",
+        "maximum_size_contracts": "100",
+        "minimum_notional_usdt": "50",
     }
 
 
