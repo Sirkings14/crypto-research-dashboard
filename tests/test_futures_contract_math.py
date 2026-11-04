@@ -108,6 +108,15 @@ def test_exchange_minimum_notional_is_enforced_when_provided():
         )
 
 
+def test_rounded_quantity_must_still_meet_exchange_minimum_notional():
+    with pytest.raises(ValueError, match="sized notional.*minimum notional"):
+        contracts_for_notional(
+            metadata(minimum_notional_usdt="650"),
+            target_notional_usdt=1_000,
+            mark_price=60_000,
+        )
+
+
 def test_exchange_maximum_quantity_is_enforced_when_provided():
     with pytest.raises(ValueError, match="maximum quantity"):
         contracts_for_notional(
