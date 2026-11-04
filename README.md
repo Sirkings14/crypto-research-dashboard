@@ -152,7 +152,7 @@ This is intentionally not wired into the existing 1x portfolio replay yet. It us
 
 ## Exchange selection
 
-The current venue decision, Burkina Faso availability checks, source separation rules and safe rollout sequence are documented in [`EXCHANGE_SELECTION.md`](EXCHANGE_SELECTION.md). Binance is the primary candidate pending account-level KYC and product eligibility confirmation; OKX remains a read-only derivatives market-data source. Live trading remains disabled.
+The current venue decision, Burkina Faso availability checks, source separation rules and safe rollout sequence are documented in [`EXCHANGE_SELECTION.md`](EXCHANGE_SELECTION.md). Binance is the user's verified primary account venue; USDⓈ-M product/contract eligibility still needs explicit confirmation before venue-specific Futures simulation. OKX remains a separately labelled read-only derivatives market-data source. Live trading remains disabled.
 
 
 ## Binance USD-M public data adapter (research only)
