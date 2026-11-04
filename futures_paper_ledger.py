@@ -273,21 +273,13 @@ def run_futures_paper_replay(
             daily_open_equity = equity_at(mark["open"])
             current_day = timestamp.date()
 
-        # Settlement applies only to the position carried into this timestamp.
-        if timestamp in funding_by_time and position is not None:
-            rate = funding_by_time[timestamp]
-            mark_notional = position["contracts"] * contract_notional_usdt(
-                instrument_metadata, mark["open"]
-            )
-            direction = 1.0 if position["side"] == "long" else -1.0
-            cost = mark_notional * rate * direction
-            cash -= cost
-            funding_paid += cost
-            funding_log.append({
-                "funding_time": timestamp.isoformat(), "side": position["side"],
-                "realized_rate": rate, "mark_notional_usdt": mark_notional,
-                "funding_cost_usdt": cost,
-            })
+        settlements = funding_by_index.get(index, [])
+
+        # A settlement exactly at candle open belongs to the position carried
+        # into that instant, preserving the original conservative ordering.
+        for event in settlements:
+            if event["offset_ms"] == 0:
+                apply_funding_event(event, mark["open"])
 
         if position is not None and position["side"] != desired_side:
             close_position(timestamp, trade["open"], "signal_change")
