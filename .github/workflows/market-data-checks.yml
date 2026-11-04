@@ -6,8 +6,6 @@ on:
     paths:
       - "binance_usdm_data.py"
       - "tests/test_binance_usdm_data.py"
-      - "binance_usdm_data.py"
-      - "tests/test_binance_usdm_data.py"
       - "market_universe.py"
       - "market_universe_worker.py"
       - "market_analysis.py"
@@ -30,6 +28,8 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - "binance_usdm_data.py"
+      - "tests/test_binance_usdm_data.py"
       - "market_universe.py"
       - "market_universe_worker.py"
       - "market_analysis.py"
