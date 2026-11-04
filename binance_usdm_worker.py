@@ -262,6 +262,12 @@ def main() -> None:
         f"Binance USD-M scan: {snapshot['success_count']} datasets collected; "
         f"{snapshot['ready_count']} paper-ready; {snapshot['failure_count']} source failures."
     )
+    if snapshot["source_status"] == "blocked_by_http_451":
+        print(
+            "SKIPPED: GitHub-hosted runner is blocked by HTTP 451 on Binance USD-M public endpoints. "
+            "No Binance dataset is paper-ready; retain the separate OKX read-only feed."
+        )
+        return
     if snapshot["success_count"] == 0:
         raise RuntimeError("No Binance USD-M trade datasets were collected; inspect the snapshot artifact.")
     if snapshot["ready_count"] == 0:
