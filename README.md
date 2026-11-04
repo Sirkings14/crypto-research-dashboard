@@ -178,3 +178,18 @@ Official Binance USD-M API reference: [Exchange Information and market-data endp
 The scheduled `.github/workflows/binance-usdm-scan.yml` workflow independently tests whether GitHub Actions can reach Binance USD-M public endpoints. It preserves diagnostic artifacts on every run. A runner-wide HTTP 451 response is recorded as `blocked_by_http_451` and treated as an explicit provider skip, not as a successful data scan or paper readiness; other unexpected collection failures remain workflow failures. On that known REST restriction, the worker also probes the separate official Binance Vision historical archive host for prior-month trade klines, mark-price klines and a funding-rate archive candidate. This probe only checks file availability; it does not download or activate historical data. Any archive fallback must independently validate checksums, schema, timestamp coverage and exact funding alignment before it can support replay. Archived data is delayed (daily files are published the next day), so it cannot replace a current market feed. Binance USD-M is not activated for replay while the runner cannot retrieve and validate its own venue data. A successful public-data scan is not account authentication or proof of profitability.
 
 Binance USD-M market paper sizing uses `MARKET_LOT_SIZE` for simulated market fills, while preserving `LOT_SIZE` separately for limit-order reference. Minimum notional is included in portfolio minimum-lot allocation. The paper ledger accepts Binance's native symbol identity and base-asset quantity convention; it still uses 1x fixed-notional research assumptions, not Binance margin tiers or liquidation rules. No order API, credentials, deposits or live execution are involved.
+
+### Official Binance Vision archive audit
+
+When the live USD-M REST endpoints return HTTP 451, the worker audits the two latest complete monthly archive periods from the separate official `data.binance.vision` host. For each of the seven symbols it downloads the trade-kline, mark-price-kline and funding-rate ZIP files, verifies their SHA-256 checksums, and reports row counts, timestamp gaps and funding timestamp offsets. This is a diagnostic audit only; it does not silently promote archive data into the live REST collector or paper replay.
+
+Audit performed 2026-11-04:
+
+- **2026-09:** all 21 archive files passed SHA-256 checks. Each symbol had 720 hourly trade candles, 720 hourly mark-price candles and 90 funding records; trade and mark timelines had no gaps.
+- **2026-10:** all 21 archive files passed SHA-256 checks, but each symbol had 24 missing trade-candle hours and 48 missing mark-price-candle hours. The missing intervals were 2026-10-28 for trade candles and 2026-10-28 through 2026-10-29 for mark prices. Each symbol had 93 funding records. October is therefore not eligible for replay.
+
+The September funding timestamps were observed 0–9ms after their hourly candle opens (October: 0–7ms). The ledger now preserves this event ordering: an exact-open settlement applies to the position carried into the open; a settlement 1–10ms after open applies after the candle-open signal fill. The ledger uses an event-provided mark price when present; otherwise it explicitly records use of the mark-candle open as a proxy. Events farther than 10ms from an hourly open inside the replay window fail closed.
+
+September is a candidate for a controlled historical pipeline test, not evidence of strategy profitability or a current market feed. October's gaps must not be filled by forward-filling prices or silently substituting another venue.
+
+Official archive documentation: [Binance Public Data](https://github.com/binance/binance-public-data).
