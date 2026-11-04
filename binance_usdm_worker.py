@@ -116,6 +116,82 @@ def probe_binance_vision_archives(
     }
 
 
+def inspect_binance_vision_archives(
+    *,
+    session=None,
+    month: str,
+    symbol: str = "BTCUSDT",
+) -> dict[str, Any]:
+    """Download and checksum one-symbol archive samples to verify real file schemas."""
+    if not isinstance(symbol, str) or not symbol.isalnum() or not symbol.isupper():
+        raise ValueError("symbol must be an uppercase alphanumeric Binance symbol")
+    if not isinstance(month, str) or len(month) != 7 or month[4] != "-":
+        raise ValueError("month must use YYYY-MM format")
+    try:
+        year, month_number = (int(part) for part in month.split("-"))
+        datetime(year, month_number, 1, tzinfo=timezone.utc)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("month must use a valid YYYY-MM value") from exc
+
+    client = session or requests.Session()
+    base = "https://data.binance.vision/data/futures/um/monthly"
+    archives = {
+        "trade_klines": f"{base}/klines/{symbol}/1h/{symbol}-1h-{month}.zip",
+        "mark_price_klines": f"{base}/markPriceKlines/{symbol}/1h/{symbol}-1h-{month}.zip",
+        "funding_rate": f"{base}/fundingRate/{symbol}/{symbol}-fundingRate-{month}.zip",
+    }
+    inspected: dict[str, dict[str, Any]] = {}
+    for name, url in archives.items():
+        try:
+            archive_response = client.get(url, timeout=30)
+            archive_response.raise_for_status()
+            checksum_response = client.get(url + ".CHECKSUM", timeout=15)
+            checksum_response.raise_for_status()
+            checksum_parts = checksum_response.text.strip().split()
+            if len(checksum_parts) < 1 or len(checksum_parts[0]) != 64:
+                raise ValueError("archive checksum file has an invalid SHA-256 value")
+            actual_sha256 = hashlib.sha256(archive_response.content).hexdigest()
+            checksum_valid = actual_sha256.lower() == checksum_parts[0].lower()
+            if not checksum_valid:
+                raise ValueError("archive SHA-256 checksum mismatch")
+
+            with zipfile.ZipFile(io.BytesIO(archive_response.content)) as archive:
+                csv_names = [item for item in archive.namelist() if item.lower().endswith(".csv")]
+                if len(csv_names) != 1:
+                    raise ValueError("archive must contain exactly one CSV file")
+                with archive.open(csv_names[0]) as raw:
+                    reader = csv.reader(io.TextIOWrapper(raw, encoding="utf-8", newline=""))
+                    sample = []
+                    row_count = 0
+                    for row in reader:
+                        row_count += 1
+                        if len(sample) < 3:
+                            sample.append(row)
+            if row_count == 0:
+                raise ValueError("archive CSV is empty")
+            inspected[name] = {
+                "url": url,
+                "archive_file": csv_names[0],
+                "sha256": actual_sha256,
+                "checksum_valid": True,
+                "row_count": row_count,
+                "sample_rows": sample,
+            }
+        except (requests.RequestException, ValueError, zipfile.BadZipFile, OSError) as exc:
+            inspected[name] = {"url": url, "checksum_valid": False, "error": str(exc)}
+
+    return {
+        "provider": "binance_vision_official_archive",
+        "symbol": symbol,
+        "month": month,
+        "files": inspected,
+        "all_checksums_valid": all(item.get("checksum_valid") is True for item in inspected.values()),
+        "schema_inspection_only": True,
+        "historical_only": True,
+        "live_trading_enabled": False,
+    }
+
+
 def assess_paper_readiness(
     symbol: str,
     trade_candles: list[dict[str, Any]],
