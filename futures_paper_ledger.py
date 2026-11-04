@@ -150,7 +150,8 @@ def run_futures_paper_replay(
     excluded_unrealized = 0
     excluded_outside_window = 0
     funding_alignment_tolerance_ms = 10.0
-    funding_window_end = stamps[-1] + timedelta(milliseconds=funding_alignment_tolerance_ms)
+    candle_interval = stamps[1] - stamps[0]
+    replay_window_end = stamps[-1] + candle_interval
     for record in funding_history:
         if not isinstance(record, dict):
             raise ValueError("funding records must be objects")
