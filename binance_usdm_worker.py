@@ -306,7 +306,7 @@ def assess_paper_readiness(
             except (KeyError, TypeError, ValueError):
                 reasons.append("invalid_funding_timestamp")
                 break
-            if start <= stamp and stamp.timestamp() <= funding_window_end:
+            if start <= stamp and stamp.timestamp() < replay_window_end:
                 candle_index = bisect_right(parsed_stamps, stamp) - 1
                 if candle_index < 0:
                     reasons.append("funding_settlement_not_aligned_within_10ms_of_candle_open")
