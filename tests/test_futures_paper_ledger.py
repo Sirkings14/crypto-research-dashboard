@@ -67,6 +67,42 @@ def test_realized_funding_only_charged_if_position_carried_into_settlement():
     assert result["final_equity_usdt"] == pytest.approx(2_009.4)
 
 
+def test_funding_one_to_ten_ms_after_open_applies_to_new_position():
+    trade, mark = rows([(60_000, 60_000), (60_000, 60_000), (60_000, 60_000)])
+    funding = [{
+        "funding_time": (BASE + timedelta(hours=1, milliseconds=5)).isoformat(),
+        "realized_rate": 0.001,
+        "mark_price": 60_000,
+    }]
+    result = replay(trade, mark, ["flat", "long", "flat"], funding)
+    assert result["funding_settlement_count"] == 1
+    assert result["net_funding_cost_usdt"] == pytest.approx(0.6)
+    assert result["funding"][0]["side"] == "long"
+    assert result["funding"][0]["funding_timestamp_offset_ms"] == pytest.approx(5)
+    assert result["funding"][0]["mark_price_source"] == "funding_record_mark_price"
+
+
+def test_funding_one_to_ten_ms_after_open_does_not_charge_position_closed_at_open():
+    trade, mark = rows([(60_000, 60_000), (60_000, 60_000), (60_000, 60_000)])
+    funding = [{
+        "funding_time": (BASE + timedelta(hours=1, milliseconds=5)).isoformat(),
+        "realized_rate": 0.001,
+    }]
+    result = replay(trade, mark, ["long", "flat", "flat"], funding)
+    assert result["funding_settlement_count"] == 0
+    assert result["net_funding_cost_usdt"] == 0
+
+
+def test_funding_timestamp_more_than_ten_ms_after_open_is_rejected():
+    trade, mark = rows([(60_000, 60_000), (60_000, 60_000)])
+    funding = [{
+        "funding_time": (BASE + timedelta(hours=1, milliseconds=11)).isoformat(),
+        "realized_rate": 0.001,
+    }]
+    with pytest.raises(ValueError, match="more than 10ms"):
+        replay(trade, mark, ["long", "long"], funding)
+
+
 def test_new_position_does_not_pay_funding_at_its_entry_timestamp():
     trade, mark = rows([(60_000, 60_000), (60_000, 60_000)])
     funding = [{"funding_time": stamp(0), "realized_rate": 0.01}]
