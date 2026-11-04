@@ -317,6 +317,29 @@ def run_futures_paper_replay(
                 "reason": "target_signal",
             })
 
+        # Binance archive/API funding timestamps can be a few milliseconds
+        # after the candle open. The signal fill is modelled at the open, so
+        # those events apply to the position active immediately after the fill.
+        post_open_settlements = [
+            event for event in settlements if event["offset_ms"] > 0
+        ]
+        for event in post_open_settlements:
+            apply_funding_event(event, mark["open"])
+
+        if post_open_settlements:
+            post_funding_equity = equity_at(mark["open"])
+            post_funding_daily_loss = max(
+                0.0,
+                (daily_open_equity - post_funding_equity) / daily_open_equity * 100.0,
+            )
+            post_funding_drawdown = max(
+                0.0, (peak_equity - post_funding_equity) / peak_equity * 100.0
+            )
+            if post_funding_daily_loss >= daily_limit:
+                risk_blocked, risk_block_reason = True, "daily_loss_limit"
+            if post_funding_drawdown >= drawdown_limit:
+                risk_blocked, risk_block_reason = True, "max_drawdown_limit"
+
         mark_equity = equity_at(mark["close"])
         peak_equity = max(peak_equity, mark_equity)
         drawdown = max(0.0, (peak_equity - mark_equity) / peak_equity * 100.0)
