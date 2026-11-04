@@ -108,9 +108,9 @@ def run_futures_paper_replay(
     """Replay long/short/flat targets with mark P&L, realized funding and costs.
 
     The target signal at candle i is executed at that candle's trade open.
-    Funding at the same timestamp is applied first to the position carried
-    into the timestamp. Exposure is fixed-notional and capped; there is no
-    leverage, margin, or liquidation simulation.
+    Funding exactly at the open applies to the carried position first; funding
+    1-10ms after open applies after the signal fill. Exposure is fixed-notional
+    and capped; there is no leverage, margin, or liquidation simulation.
     """
     if not isinstance(symbol, str) or not symbol.endswith("USDT") or not symbol[:-4].isalnum() or not symbol.isupper():
         raise ValueError("symbol must be an uppercase USDT-quoted pair")
