@@ -319,10 +319,15 @@ def main() -> None:
         f"{snapshot['ready_count']} paper-ready; {snapshot['failure_count']} source failures."
     )
     if snapshot["source_status"] == "blocked_by_http_451":
+        archive_probe = probe_binance_vision_archives()
+        snapshot["official_archive_probe"] = archive_probe
+        _atomic_json(SNAPSHOT_OUTPUT, snapshot)
         print(
-            "SKIPPED: GitHub-hosted runner is blocked by HTTP 451 on Binance USD-M public endpoints. "
-            "No Binance dataset is paper-ready; retain the separate OKX read-only feed."
+            "SKIPPED: GitHub-hosted runner is blocked by HTTP 451 on Binance USD-M REST endpoints. "
+            "No Binance dataset is paper-ready; probing official historical archives separately."
         )
+        for name, result in archive_probe["files"].items():
+            print(f"Binance Vision {name}: HTTP {result.get('status_code', 'unavailable')}")
         return
     if snapshot["success_count"] == 0:
         raise RuntimeError("No Binance USD-M trade datasets were collected; inspect the snapshot artifact.")
