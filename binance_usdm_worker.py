@@ -132,7 +132,7 @@ def collect_snapshot(
     for symbol in symbols:
         try:
             trades = fetch_usdm_trade_candles(
-                symbol, interval="1h", limit=100, session=client, now_ms=now_ms
+                symbol, interval="1h", limit=101, session=client, now_ms=now_ms
             )
         except (requests.RequestException, ValueError, RuntimeError) as exc:
             failures.append({"market": "futures_binance", "symbol": symbol, "component": "trade_candles", "error": str(exc)})
@@ -140,7 +140,7 @@ def collect_snapshot(
 
         try:
             marks = fetch_usdm_mark_price_candles(
-                symbol, interval="1h", limit=100, session=client, now_ms=now_ms
+                symbol, interval="1h", limit=101, session=client, now_ms=now_ms
             )
             mark_error = None
         except (requests.RequestException, ValueError, RuntimeError) as exc:
