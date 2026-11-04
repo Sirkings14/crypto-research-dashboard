@@ -430,12 +430,20 @@ def main() -> None:
             "SKIPPED: GitHub-hosted runner is blocked by HTTP 451 on Binance USD-M REST endpoints. "
             "No Binance dataset is paper-ready; checking checksums and schemas of official historical archives."
         )
-        for name, result in archive_probe["files"].items():
-            print(
-                f"Binance Vision {name}: "
-                f"checksum_valid={result.get('checksum_valid', False)} "
-                f"rows={result.get('row_count', 0)}"
-            )
+        if archive_probe.get("all_available") is True:
+            for name, result in snapshot["official_archive_inspection"]["files"].items():
+                coverage = result.get("coverage", {})
+                print(
+                    f"Binance Vision {name}: "
+                    f"checksum_valid={result.get('checksum_valid', False)} "
+                    f"rows={result.get('row_count', 0)} "
+                    f"first={coverage.get('first_timestamp_ms')} "
+                    f"last={coverage.get('last_timestamp_ms')} "
+                    f"hourly_gaps={coverage.get('hourly_gap_count', 'n/a')}"
+                )
+        else:
+            for name, result in archive_probe["files"].items():
+                print(f"Binance Vision {name}: HTTP {result.get('status_code', 'unavailable')}")
         return
     if snapshot["success_count"] == 0:
         raise RuntimeError("No Binance USD-M trade datasets were collected; inspect the snapshot artifact.")
