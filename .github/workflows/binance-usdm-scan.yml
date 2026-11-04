@@ -66,9 +66,12 @@ jobs:
               raise SystemExit("Binance USD-M collector produced no diagnostic snapshot")
           data = json.loads(path.read_text(encoding="utf-8"))
           ready = data.get("ready_count", 0)
+          print(f"Binance USD-M source status: {data.get('source_status', 'unknown')}")
           print(f"Binance USD-M datasets collected: {data.get('success_count', 0)}")
           print(f"Paper-ready datasets: {ready}")
           print(f"Source failures: {data.get('failure_count', 0)}")
-          if ready < 1:
+          if data.get("source_status") == "blocked_by_http_451":
+              print("WARNING: GitHub runner cannot reach Binance USD-M (HTTP 451). This is an explicit provider skip, not paper readiness.")
+          elif ready < 1:
               raise SystemExit("No Binance USD-M dataset passed paper-readiness checks")
           PY
