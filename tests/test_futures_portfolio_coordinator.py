@@ -349,3 +349,27 @@ def test_coordinator_handles_full_seven_market_universe_under_shared_cap():
     assert sum(result["portfolio_sizing"]["maximum_allocations_usdt"].values()) == pytest.approx(5_000)
     assert result["maximum_observed_gross_notional_usdt"] <= 5_000
     assert result["live_trading_enabled"] is False
+
+
+
+def test_binance_minimum_notional_is_reserved_before_portfolio_allocation():
+    markets = two_markets()
+    doge = market("DOGEUSDT", 1, "DOGE", [(0.1, 0.1), (0.1, 0.1)], ["flat", "flat"])
+    doge["instrument_metadata"].update({
+        "provider": "binance_usdm_exchange_info",
+        "instrument": "DOGEUSDT",
+        "symbol": "DOGEUSDT",
+        "lot_size_contracts": "1",
+        "minimum_size_contracts": "1",
+        "minimum_notional_usdt": "50",
+    })
+    markets = {"DOGEUSDT": doge}
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=200,
+        target_total_notional_usdt=100,
+        max_total_notional_usdt=150,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+    )
+    assert result["assumptions"]["minimum_notional_by_symbol_usdt"]["DOGEUSDT"] == pytest.approx(50)
