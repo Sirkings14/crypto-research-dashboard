@@ -1,0 +1,36 @@
+name: Binance Futures Testnet adapter checks
+
+on:
+  push:
+    branches: [main, binance-testnet-execution]
+    paths:
+      - "binance_usdm_testnet.py"
+      - "tests/test_binance_usdm_testnet.py"
+      - ".github/workflows/binance-testnet-adapter-checks.yml"
+  pull_request:
+    paths:
+      - "binance_usdm_testnet.py"
+      - "tests/test_binance_usdm_testnet.py"
+      - ".github/workflows/binance-testnet-adapter-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: binance-testnet-adapter-checks
+  cancel-in-progress: false
+
+jobs:
+  testnet-adapter-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check pytest requests
+      - name: Run isolated Testnet adapter tests
+        run: python -m pytest -q tests/test_binance_usdm_testnet.py
