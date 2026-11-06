@@ -1,0 +1,86 @@
+name: Multi-market data checks
+
+on:
+  push:
+    branches: [main, phase2-multi-market-data, phase2-clean-reconcile]
+    paths:
+      - "binance_usdm_data.py"
+      - "binance_usdm_instrument.py"
+      - "binance_usdm_worker.py"
+      - "binance_usdm_archive.py"
+      - "binance_usdm_archive_analysis.py"
+      - "binance_usdm_archive_worker.py"
+      - "tests/test_binance_usdm_archive.py"
+      - "tests/test_binance_usdm_archive_analysis.py"
+      - "tests/test_binance_usdm_worker.py"
+      - "tests/test_binance_usdm_instrument.py"
+      - "tests/test_binance_usdm_data.py"
+      - "market_universe.py"
+      - "market_universe_worker.py"
+      - "market_analysis.py"
+      - "funding_replay.py"
+      - "futures_contract_math.py"
+      - "futures_paper_ledger.py"
+      - "futures_signal_adapter.py"
+      - "futures_portfolio_coordinator.py"
+      - "futures_portfolio_sizing.py"
+      - "tests/test_futures_paper_ledger.py"
+      - "tests/test_futures_contract_math.py"
+      - "tests/test_futures_signal_adapter.py"
+      - "tests/test_futures_portfolio_coordinator.py"
+      - "tests/test_futures_portfolio_sizing.py"
+      - "tests/test_market_universe.py"
+      - "tests/test_market_analysis.py"
+      - "tests/test_funding_replay.py"
+      - ".github/workflows/market-data-checks.yml"
+      - ".github/workflows/market-universe-scan.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "binance_usdm_data.py"
+      - "binance_usdm_instrument.py"
+      - "binance_usdm_worker.py"
+      - "binance_usdm_archive.py"
+      - "binance_usdm_archive_worker.py"
+      - "tests/test_binance_usdm_archive.py"
+      - "tests/test_binance_usdm_data.py"
+      - "tests/test_binance_usdm_instrument.py"
+      - "tests/test_binance_usdm_worker.py"
+      - "market_universe.py"
+      - "market_universe_worker.py"
+      - "market_analysis.py"
+      - "funding_replay.py"
+      - "futures_contract_math.py"
+      - "futures_paper_ledger.py"
+      - "futures_signal_adapter.py"
+      - "futures_portfolio_coordinator.py"
+      - "futures_portfolio_sizing.py"
+      - "tests/test_futures_paper_ledger.py"
+      - "tests/test_futures_contract_math.py"
+      - "tests/test_futures_signal_adapter.py"
+      - "tests/test_futures_portfolio_coordinator.py"
+      - "tests/test_futures_portfolio_sizing.py"
+      - "tests/test_market_universe.py"
+      - "tests/test_market_analysis.py"
+      - "tests/test_funding_replay.py"
+      - ".github/workflows/market-data-checks.yml"
+      - ".github/workflows/market-universe-scan.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-market-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt pytest
+      - name: Compile market modules
+        run: python -m py_compile binance_usdm_data.py binance_usdm_instrument.py binance_usdm_worker.py binance_usdm_archive.py binance_usdm_archive_analysis.py binance_usdm_archive_worker.py market_universe.py market_universe_worker.py market_analysis.py funding_replay.py futures_contract_math.py futures_paper_ledger.py futures_signal_adapter.py futures_portfolio_coordinator.py futures_portfolio_sizing.py
+      - name: Run the full repository test suite
+        run: python -m pytest -q
