@@ -2,7 +2,7 @@ name: Multi-market data checks
 
 on:
   push:
-    branches: [phase2-multi-market-data]
+    branches: [main, phase2-multi-market-data, phase2-clean-reconcile]
     paths:
       - "binance_usdm_data.py"
       - "binance_usdm_instrument.py"
