@@ -5,7 +5,7 @@ on:
     - cron: "41 */4 * * *"
   workflow_dispatch:
   push:
-    branches: [phase2-multi-market-data]
+    branches: [main, phase2-multi-market-data, phase2-clean-reconcile]
     paths:
       - "market_universe.py"
       - "market_universe_worker.py"
