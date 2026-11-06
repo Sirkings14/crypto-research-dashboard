@@ -2,7 +2,7 @@ name: Research lab checks
 
 on:
   push:
-    branches: [multi-strategy-research-v1, phase2-multi-market-data]
+    branches: [main, multi-strategy-research-v1, phase2-multi-market-data, phase2-clean-reconcile]
     paths:
       - "strategy_lab.py"
       - "strategy_engine.py"
