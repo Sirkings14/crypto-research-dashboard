@@ -1,7 +1,7 @@
 name: Binance USD-M monthly archive ingestion
 on:
   push:
-    branches: [phase2-multi-market-data]
+    branches: [main, phase2-multi-market-data, phase2-clean-reconcile]
     paths:
       - "binance_usdm_archive.py"
       - "binance_usdm_archive_analysis.py"
@@ -26,8 +26,6 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: phase2-multi-market-data
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
