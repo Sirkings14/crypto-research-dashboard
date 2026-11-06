@@ -1,0 +1,49 @@
+name: Binance USD-M monthly archive ingestion
+on:
+  push:
+    branches: [phase2-multi-market-data]
+    paths:
+      - "binance_usdm_archive.py"
+      - "binance_usdm_archive_analysis.py"
+      - "binance_usdm_archive_worker.py"
+      - "tests/test_binance_usdm_archive.py"
+      - "tests/test_binance_usdm_archive_analysis.py"
+      - ".github/workflows/binance-usdm-archive-ingest.yml"
+  workflow_dispatch:
+    inputs:
+      month:
+        description: Complete UTC month to ingest (YYYY-MM)
+        required: true
+        default: "2026-09"
+permissions:
+  contents: read
+concurrency:
+  group: binance-usdm-monthly-archive-ingestion
+  cancel-in-progress: false
+jobs:
+  ingest-verified-monthly-archives:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase2-multi-market-data
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install read-only archive dependencies
+        run: python -m pip install --disable-pip-version-check requests numpy
+      - name: Compile archive ingestion modules
+        run: python -m py_compile binance_usdm_archive.py binance_usdm_archive_analysis.py binance_usdm_archive_worker.py
+      - name: Ingest checksum-verified monthly archives
+        run: python binance_usdm_archive_worker.py --month "${{ github.event.inputs.month || '2026-09' }}"
+      - name: Preserve monthly historical dataset and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: binance-usdm-monthly-archive-${{ github.event.inputs.month || '2026-09' }}
+          path: |
+            data/binance_usdm_archive_latest.json
+            data/binance_usdm_archive_analysis_latest.json
+          if-no-files-found: error
+          retention-days: 30

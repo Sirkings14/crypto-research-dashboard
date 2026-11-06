@@ -1,0 +1,375 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from futures_portfolio_coordinator import run_futures_portfolio_replay
+
+
+BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def stamp(hour):
+    return (BASE + timedelta(hours=hour)).isoformat()
+
+
+def market(symbol, contract_value, currency, prices, sides):
+    trades, marks = [], []
+    for index, (open_price, close_price) in enumerate(prices):
+        trades.append({"timestamp": stamp(index), "open": open_price, "close": close_price})
+        marks.append({"timestamp": stamp(index), "open": open_price, "close": close_price})
+    return {
+        "trade_candles": trades,
+        "mark_candles": marks,
+        "funding_history": [],
+        "instrument_metadata": {
+            "instrument": f"{symbol[:-4]}-USDT-SWAP",
+            "instrument_type": "SWAP", "contract_type": "linear",
+            "settlement_currency": "USDT", "instrument_state": "live",
+            "contract_value": contract_value, "contract_value_currency": currency,
+            "contract_multiplier": "1", "lot_size_contracts": 1,
+            "minimum_size_contracts": 1,
+        },
+        "target_sides": sides,
+    }
+
+
+def two_markets():
+    return {
+        "BTCUSDT": market("BTCUSDT", 0.01, "BTC",
+                          [(60_000, 60_000), (60_000, 61_000), (61_000, 61_000)],
+                          ["long", "long", "flat"]),
+        "ETHUSDT": market("ETHUSDT", 0.1, "ETH",
+                          [(3_000, 3_000), (3_000, 3_200), (3_200, 3_200)],
+                          ["long", "long", "flat"]),
+    }
+
+
+def test_equal_sleeves_share_one_budget_and_aggregate_pnl():
+    result = run_futures_portfolio_replay(
+        markets=two_markets(), initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000, max_total_notional_usdt=1_200,
+        taker_fee_bps_per_side=0, slippage_bps_per_side=0,
+    )
+    assert result["market_count"] == 2
+    assert result["per_symbol"]["BTCUSDT"]["initial_equity_usdt"] == pytest.approx(1_250)
+    assert result["per_symbol"]["ETHUSDT"]["initial_equity_usdt"] == pytest.approx(750)
+    assert result["assumptions"]["max_notional_by_symbol_usdt"]["BTCUSDT"] <= result["per_symbol"]["BTCUSDT"]["initial_equity_usdt"]
+    assert result["assumptions"]["max_notional_by_symbol_usdt"]["ETHUSDT"] <= result["per_symbol"]["ETHUSDT"]["initial_equity_usdt"]
+    assert result["final_equity_usdt"] == pytest.approx(2_030)
+    assert result["maximum_observed_gross_notional_usdt"] <= 1_200
+    assert result["live_trading_enabled"] is False
+
+
+def test_rejects_market_timelines_that_do_not_match():
+    markets = two_markets()
+    markets["ETHUSDT"]["trade_candles"][1]["timestamp"] = stamp(3)
+    markets["ETHUSDT"]["mark_candles"][1]["timestamp"] = stamp(3)
+    with pytest.raises(ValueError, match="identical candle timestamps"):
+        run_futures_portfolio_replay(markets=markets)
+
+
+@pytest.mark.parametrize("target,cap,equity", [
+    (600, 500, 1_000),
+    (600, 600, 500),
+])
+def test_rejects_target_or_gross_cap_outside_budget(target, cap, equity):
+    with pytest.raises(ValueError):
+        run_futures_portfolio_replay(
+            markets=two_markets(), initial_equity_usdt=equity,
+            target_total_notional_usdt=target, max_total_notional_usdt=cap,
+        )
+
+
+def test_rejects_empty_portfolio_and_missing_market_inputs():
+    with pytest.raises(ValueError, match="non-empty"):
+        run_futures_portfolio_replay(markets={})
+    with pytest.raises(ValueError, match="missing required fields"):
+        run_futures_portfolio_replay(markets={"BTCUSDT": {}})
+
+
+def test_each_market_is_independently_validated_by_single_symbol_ledger():
+    markets = two_markets()
+    markets["ETHUSDT"]["instrument_metadata"]["instrument"] = "BTC-USDT-SWAP"
+    with pytest.raises(ValueError, match="does not match"):
+        run_futures_portfolio_replay(markets=markets)
+
+
+def test_portfolio_daily_loss_breaker_flattens_all_symbols_and_blocks_reentry():
+    markets = two_markets()
+    for symbol in markets:
+        item = markets[symbol]
+        if symbol == "BTCUSDT":
+            prices = [(60_000, 60_000), (60_000, 54_000), (54_000, 54_000)]
+        else:
+            prices = [(3_000, 3_000), (3_000, 2_700), (2_700, 2_700)]
+        item["trade_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        item["mark_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        item["target_sides"] = ["long", "long", "long"]
+
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+        max_daily_loss_pct=4,
+        max_drawdown_pct=50,
+    )
+
+    breaker = result["portfolio_risk_breaker"]
+    assert breaker["triggered"] is True
+    assert breaker["reason"] == "portfolio_daily_loss_limit"
+    assert breaker["detection_timestamp"] == stamp(1)
+    assert breaker["coordinated_exit_timestamp"] == stamp(2)
+    for symbol in ("BTCUSDT", "ETHUSDT"):
+        trades = result["per_symbol"][symbol]["trades"]
+        assert any(
+            trade["action"] == "close" and trade["timestamp"] == stamp(2)
+            for trade in trades
+        )
+        assert not any(
+            trade["action"] == "open" and trade["timestamp"] == stamp(2)
+            for trade in trades
+        )
+        assert result["per_symbol"][symbol]["equity_curve"][-1]["position_side"] == "flat"
+    assert result["live_trading_enabled"] is False
+
+
+def test_portfolio_drawdown_breaker_uses_shared_peak_equity():
+    markets = two_markets()
+    for symbol, prices in {
+        "BTCUSDT": [(60_000, 60_000), (60_000, 54_000), (54_000, 54_000)],
+        "ETHUSDT": [(3_000, 3_000), (3_000, 2_700), (2_700, 2_700)],
+    }.items():
+        markets[symbol]["trade_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        markets[symbol]["mark_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        markets[symbol]["target_sides"] = ["long", "long", "long"]
+
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+        max_daily_loss_pct=50,
+        max_drawdown_pct=4,
+    )
+
+    assert result["portfolio_risk_breaker"]["triggered"] is True
+    assert result["portfolio_risk_breaker"]["reason"] == "portfolio_max_drawdown_limit"
+    assert result["portfolio_risk_breaker"]["detection_timestamp"] == stamp(1)
+    assert result["portfolio_risk_breaker"]["coordinated_exit_timestamp"] == stamp(2)
+
+
+def test_coordinator_uses_weighted_sizing_and_concentration_caps():
+    result = run_futures_portfolio_replay(
+        markets=two_markets(),
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        allocation_weights={"BTCUSDT": 3, "ETHUSDT": 1},
+        max_symbol_allocation_pct=75,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+    )
+    target = result["portfolio_sizing"]["target_allocations_usdt"]
+    maximum = result["portfolio_sizing"]["maximum_allocations_usdt"]
+    assert target["BTCUSDT"] == pytest.approx(675)
+    assert target["ETHUSDT"] == pytest.approx(325)
+    assert sum(target.values()) == pytest.approx(1_000)
+    assert sum(maximum.values()) == pytest.approx(1_200)
+    assert all(value <= 900 + 1e-8 for value in maximum.values())
+
+
+def test_coordinator_fails_closed_when_minimum_lot_breaks_concentration_cap():
+    with pytest.raises(ValueError, match="concentration cap"):
+        run_futures_portfolio_replay(
+            markets=two_markets(),
+            initial_equity_usdt=2_000,
+            target_total_notional_usdt=1_000,
+            max_total_notional_usdt=1_200,
+            max_symbol_allocation_pct=40,
+        )
+
+
+
+def test_portfolio_exposure_breaker_flattens_all_symbols_after_price_drift():
+    markets = two_markets()
+    for symbol, prices in {
+        "BTCUSDT": [(60_000, 60_000), (60_000, 90_000), (90_000, 90_000)],
+        "ETHUSDT": [(3_000, 3_000), (3_000, 4_500), (4_500, 4_500)],
+    }.items():
+        markets[symbol]["trade_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        markets[symbol]["mark_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        markets[symbol]["target_sides"] = ["long", "long", "long"]
+
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+        max_daily_loss_pct=100,
+        max_drawdown_pct=100,
+    )
+
+    breaker = result["portfolio_risk_breaker"]
+    assert breaker["triggered"] is True
+    assert breaker["reason"] == "portfolio_gross_exposure_limit"
+    assert breaker["detection_timestamp"] == stamp(1)
+    assert breaker["coordinated_exit_timestamp"] == stamp(2)
+    assert breaker["metrics_at_detection"]["gross_notional_usdt"] > 1_200
+    for symbol in ("BTCUSDT", "ETHUSDT"):
+        trades = result["per_symbol"][symbol]["trades"]
+        assert any(
+            trade["action"] == "close" and trade["timestamp"] == stamp(2)
+            for trade in trades
+        )
+        assert not any(
+            trade["action"] == "open" and trade["timestamp"] == stamp(2)
+            for trade in trades
+        )
+        assert result["per_symbol"][symbol]["equity_curve"][-1]["position_side"] == "flat"
+    assert result["live_trading_enabled"] is False
+
+
+def test_portfolio_exposure_at_or_below_cap_does_not_trigger_exposure_breaker():
+    result = run_futures_portfolio_replay(
+        markets=two_markets(),
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+        max_daily_loss_pct=100,
+        max_drawdown_pct=100,
+    )
+    assert result["portfolio_risk_breaker"]["triggered"] is False
+    assert result["maximum_observed_gross_notional_usdt"] <= 1_200
+
+
+
+def test_portfolio_exposure_open_gap_flattens_at_same_candle_open():
+    markets = two_markets()
+    for symbol, prices in {
+        "BTCUSDT": [(60_000, 60_000), (90_000, 90_000), (90_000, 90_000)],
+        "ETHUSDT": [(3_000, 3_000), (4_500, 4_500), (4_500, 4_500)],
+    }.items():
+        markets[symbol]["trade_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        markets[symbol]["mark_candles"] = [
+            {"timestamp": stamp(i), "open": op, "close": close}
+            for i, (op, close) in enumerate(prices)
+        ]
+        markets[symbol]["target_sides"] = ["long", "long", "long"]
+
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=2_000,
+        target_total_notional_usdt=1_000,
+        max_total_notional_usdt=1_200,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+        max_daily_loss_pct=100,
+        max_drawdown_pct=100,
+    )
+
+    breaker = result["portfolio_risk_breaker"]
+    assert breaker["triggered"] is True
+    assert breaker["reason"] == "portfolio_gross_exposure_limit"
+    assert breaker["detection_timestamp"] == stamp(1)
+    assert breaker["coordinated_exit_timestamp"] == stamp(1)
+    assert breaker["coordinated_exit_execution"] == "same_candle_open"
+    for symbol in ("BTCUSDT", "ETHUSDT"):
+        assert any(
+            trade["action"] == "close" and trade["timestamp"] == stamp(1)
+            for trade in result["per_symbol"][symbol]["trades"]
+        )
+        assert not any(
+            trade["action"] == "open" and trade["timestamp"] == stamp(1)
+            for trade in result["per_symbol"][symbol]["trades"]
+        )
+
+
+
+def test_coordinator_handles_full_seven_market_universe_under_shared_cap():
+    specifications = {
+        "BTCUSDT": (0.01, "BTC", 60_000),
+        "ETHUSDT": (0.1, "ETH", 3_000),
+        "BNBUSDT": (1, "BNB", 500),
+        "SOLUSDT": (1, "SOL", 150),
+        "XRPUSDT": (100, "XRP", 0.5),
+        "ADAUSDT": (100, "ADA", 0.4),
+        "DOGEUSDT": (1_000, "DOGE", 0.1),
+    }
+    markets = {}
+    for symbol, (contract_value, currency, price) in specifications.items():
+        markets[symbol] = market(
+            symbol, contract_value, currency,
+            [(price, price), (price, price), (price, price)],
+            ["long", "long", "flat"],
+        )
+
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=10_000,
+        target_total_notional_usdt=4_000,
+        max_total_notional_usdt=5_000,
+        max_symbol_allocation_pct=50,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+    )
+
+    assert result["market_count"] == 7
+    assert set(result["symbols"]) == set(specifications)
+    assert sum(result["portfolio_sizing"]["target_allocations_usdt"].values()) == pytest.approx(4_000)
+    assert sum(result["portfolio_sizing"]["maximum_allocations_usdt"].values()) == pytest.approx(5_000)
+    assert result["maximum_observed_gross_notional_usdt"] <= 5_000
+    assert result["live_trading_enabled"] is False
+
+
+
+def test_binance_minimum_notional_is_reserved_before_portfolio_allocation():
+    markets = two_markets()
+    doge = market("DOGEUSDT", 1, "DOGE", [(0.1, 0.1), (0.1, 0.1)], ["flat", "flat"])
+    doge["instrument_metadata"].update({
+        "provider": "binance_usdm_exchange_info",
+        "instrument": "DOGEUSDT",
+        "symbol": "DOGEUSDT",
+        "lot_size_contracts": "1",
+        "minimum_size_contracts": "1",
+        "minimum_notional_usdt": "50",
+    })
+    markets = {"DOGEUSDT": doge}
+    result = run_futures_portfolio_replay(
+        markets=markets,
+        initial_equity_usdt=200,
+        target_total_notional_usdt=100,
+        max_total_notional_usdt=150,
+        taker_fee_bps_per_side=0,
+        slippage_bps_per_side=0,
+    )
+    assert result["assumptions"]["minimum_notional_by_symbol_usdt"]["DOGEUSDT"] == pytest.approx(50)

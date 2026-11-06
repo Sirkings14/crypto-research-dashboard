@@ -1,0 +1,77 @@
+name: Binance USD-M public data research
+
+on:
+  schedule:
+    - cron: "53 */4 * * *"
+  workflow_dispatch:
+  push:
+    branches: [phase2-multi-market-data]
+    paths:
+      - "binance_usdm_data.py"
+      - "binance_usdm_instrument.py"
+      - "binance_usdm_worker.py"
+      - "market_analysis.py"
+      - "market_universe.py"
+      - "futures_contract_math.py"
+      - "futures_paper_ledger.py"
+      - "futures_portfolio_coordinator.py"
+      - "tests/test_binance_usdm_data.py"
+      - "tests/test_binance_usdm_instrument.py"
+      - "tests/test_binance_usdm_worker.py"
+      - "tests/test_futures_contract_math.py"
+      - "tests/test_futures_paper_ledger.py"
+      - "tests/test_futures_portfolio_coordinator.py"
+      - ".github/workflows/binance-usdm-scan.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: binance-usdm-public-scan
+  cancel-in-progress: false
+
+jobs:
+  collect-binance-usdm-public-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install read-only data dependencies
+        run: python -m pip install --disable-pip-version-check numpy requests
+      - name: Collect Binance USD-M candles, mark prices, funding and contract rules
+        id: collect
+        continue-on-error: true
+        run: python binance_usdm_worker.py
+      - name: Preserve Binance source diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: binance-usdm-public-research
+          path: |
+            data/binance_usdm_latest.json
+            data/binance_usdm_analysis_latest.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Fail if Binance USD-M data is not paper-ready
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("data/binance_usdm_latest.json")
+          if not path.exists():
+              raise SystemExit("Binance USD-M collector produced no diagnostic snapshot")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          ready = data.get("ready_count", 0)
+          print(f"Binance USD-M source status: {data.get('source_status', 'unknown')}")
+          print(f"Binance USD-M datasets collected: {data.get('success_count', 0)}")
+          print(f"Paper-ready datasets: {ready}")
+          print(f"Source failures: {data.get('failure_count', 0)}")
+          if data.get("source_status") == "blocked_by_http_451":
+              print("WARNING: GitHub runner cannot reach Binance USD-M (HTTP 451). This is an explicit provider skip, not paper readiness.")
+          elif ready < 1:
+              raise SystemExit("No Binance USD-M dataset passed paper-readiness checks")
+          PY

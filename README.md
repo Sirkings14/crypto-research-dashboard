@@ -39,7 +39,6 @@ Required columns: `timestamp, open, high, low, close`; `volume` is optional. Tim
 - The model does not include order-book depth, market impact, latency, funding, taxes, delistings, or exchange outages. Historical and simulated results do not predict future performance.
 - Codespaces is an interactive dashboard environment. Stopping or closing it pauses the app, while the scheduled GitHub Actions paper worker continues independently. Historical holdout experiment records remain in the Codespace filesystem; the paper ledger is public in this repository.
 
-
 ## Multi-strategy research lab
 
 The experimental `strategy_lab.py` dashboard evaluates a deterministic grid of more than 1,000 SMA, EMA, momentum, RSI, Bollinger-band, and Donchian configurations. It ranks candidates on a chronological validation segment after a drawdown filter, records every trial with its data hash and assumptions in the local SQLite database, and only calculates holdout metrics after a candidate is selected. The holdout is then consumed and must not be used to tune that strategy.
@@ -52,9 +51,157 @@ streamlit run strategy_lab.py
 
 This is a separate historical research view; it does not change the fixed paper account or place orders. The default grid contains 1,030 configurations and caps each run at 100,000 bars to keep research responsive. The strategy grid is a discovery tool, not evidence of a durable edge. Searching many variants increases selection bias; candidates require fresh data, forward paper evaluation, and explicit risk review before any discussion of live deployment. MiroFish can be used to explore narrative scenarios that suggest hypotheses, but its agent simulations are not a substitute for historical execution data or calibrated market forecasts.
 
-
 ## 30-day forward paper experiment
 
 After this change is merged, the scheduled worker seeds 1,030 separate hypothetical BTC/USDT Spot accounts at the latest completed 5-minute candle. Each starts with 1,000 USDT, uses 50% allocation and estimated 10 bps fees plus 5 bps slippage per side. The worker catches up missed completed candles, writes daily strategy scorecards to `data/strategy_paper_daily.csv`, and stops the experiment after 30 days. Current state is in `data/strategy_paper_state.json`.
 
 This experiment is paper-only and does not place orders. GitHub Actions scheduling can be delayed; the worker catches up from public candles when it runs, and refuses to silently skip data older than its recovery window. A positive result over one month is not by itself proof of a durable edge or authorization to begin live trading.
+
+## Multi-market public data foundation
+
+The Phase 2 collector reads completed hourly candles for a bounded initial universe (BTC, ETH, BNB, SOL, XRP, ADA and DOGE). Spot data is sourced from Binance public market data; USDT perpetual swap candles are sourced from OKX's unauthenticated V5 public market-data endpoint. This is a data-source choice only, not a decision about where the user should open an account or execute trades.
+
+The scheduled GitHub Actions workflow runs every four hours and stores a JSON snapshot as a seven-day artifact rather than committing market snapshots into Git history. Each snapshot records its provider, per-market failures and the explicit `live_trading_enabled: false` safety flag. A successful market-data scan is not evidence of a trading edge and does not enable order placement.
+
+Volume fields preserve their source units: Binance Spot `volume` is base-asset quantity, while OKX swap `volume` is contract count. The collector also records `base_volume` and `quote_volume` (USDT) separately so cross-market volume comparisons can use a common quote-currency measure rather than mixing contracts and coins.
+
+Official endpoint reference: [OKX V5 API – Candlesticks](https://www.okx.com/docs-v5/en/#rest-api-market-data-get-candlesticks).
+
+
+## Multi-market technical analysis (research only)
+
+The public market worker also writes `data/market_analysis_latest.json` alongside the raw candle snapshot. It calculates EMA20/EMA50 trend structure, RSI14, 24-hour momentum and ATR14 volatility independently for each Spot and perpetual-swap dataset, then compares the directional research bias for each matched symbol.
+
+The score is an explainable heuristic, not a probability, forecast guarantee, or buy/sell instruction. Spot and perpetual results are kept separate; a disagreement is labelled as divergence rather than averaged away. Insufficient or malformed candle histories are reported as analysis failures. The report explicitly sets `live_trading_enabled: false` and contains no order instructions. Both the raw snapshot and analysis report are uploaded as a seven-day Actions artifact.
+
+
+### Perpetual funding context
+
+For each OKX USDT perpetual market, the collector separately requests the public current funding-rate endpoint. It records the current and next published rates, settlement timestamps, formula type and observation time when available. This is a live snapshot, not a historical funding series or a guarantee of the next settlement rate. Funding is exposed in the analysis report as context only and is deliberately excluded from the technical research score until a separately validated funding-aware model and historical dataset exist. If the funding endpoint fails, candle collection and technical analysis continue and the funding error is recorded.
+
+The collector also retrieves up to 100 recent funding-history records per swap. Predicted `fundingRate` and actual `realizedRate` are kept as distinct fields and ordered by settlement time; only realized observations are suitable for a funding-cost replay. OKX documents up to three months of history, so this bounded sample is useful for initial research but is not a long-term funding archive. The current funding snapshot and the historical series have separate failure fields.
+
+### Funding-cost replay (research only)
+
+`funding_replay.py` replays actual `realized_rate` observations for a fixed USDT notional and a selected long or short side. Positive output is a net funding expense; negative output is a net funding credit. Predicted rates and records without a realized rate are excluded. This is deliberately not a complete futures backtest: it does not include price PnL, changing notional, trading fees, slippage, margin or liquidation. It cannot establish profitability or authorize live trading.
+
+### Perpetual contract metadata
+
+For each OKX USDT swap, the collector also reads public instrument metadata: contract type/value and value currency, settlement currency, contract lot increment, minimum contract size, tick size, exchange leverage ceiling, instrument state and any upcoming sizing-rule changes. Only linear USDT-settled swaps are accepted by this metadata parser. The exchange leverage ceiling is informational and is never used to configure leverage or open a position. Contract size fields are retained so a later paper engine can size in contracts rather than incorrectly treating contract counts as coin quantities.
+
+### Mark-price history for risk research
+
+The collector also requests up to 100 completed hourly mark-price candles for each perpetual swap. These are kept separate from the trade-price candles and are not substituted for them. Mark-price candles provide the reference series needed for a later, more realistic unrealized-PnL and liquidation-risk paper model; missing mark-price data is reported separately and must block any risk-sensitive simulation for that market. OKX limits this endpoint to 100 rows per request.
+
+
+## Contract-aware Futures paper accounting (initial primitives)
+
+`futures_contract_math.py` adds isolated, deterministic accounting primitives for OKX-style linear USDT-settled perpetual contracts. It derives per-contract USDT notional from the public contract value/currency and mark price, rounds target exposure down to the published lot increment, rejects sizes below the published minimum, computes linear long/short P&L, and estimates one-side taker fees. Mark-to-market uses the supplied mark price rather than substituting the trade candle close.
+
+This is not yet a full Futures paper-trading worker. The functions fail closed for unsupported contract types, non-USDT settlement, missing sizing metadata, or instruments not marked live. The module does not choose leverage, calculate liquidation prices, model maintenance margin, or place orders. Entry and exit fees must be charged separately by a future ledger, and funding must be applied only at verified settlement timestamps to positions actually open at that time. No Futures paper account has been seeded by this change; no historical or live performance is claimed.
+
+
+## Futures paper ledger (research-only replay)
+
+`futures_paper_ledger.py` adds a deterministic, single-instrument linear USDT perpetual replay. It accepts a supplied long/short/flat target for each candle, fills at the trade-candle open with adverse fixed slippage, values open positions at the aligned mark-candle close, and applies fees on both entry and exit. It applies only realized funding rates at exact candle-open settlement timestamps, to the position carried into that timestamp; a position opened at the settlement timestamp is not charged or credited for that event.
+
+The replay requires trade and mark candles to have identical timestamps and a regular interval. It refuses to approximate a funding settlement that does not align with a candle boundary. It caps notional exposure, rounds contract size down using public instrument metadata, tracks cash/equity/drawdown, and blocks new entries after configured daily-loss or drawdown limits. Any open position is closed at the end of the replay with the configured exit slippage and fee.
+
+This is an accounting/replay module, not yet an automated strategy or scheduled paper account. Signals are inputs; this module does not generate them. The 1x label is a conservative research assumption, not a margin or liquidation simulation. Maintenance margin tiers, liquidation mechanics, exchange-specific fee schedules, variable slippage, intrabar paths and funding mark prices between candle boundaries are not modelled. The engine has no API credentials, account access, or order-placement capability; `live_trading_enabled` remains false.
+
+
+## Futures strategy signal adapter (no-lookahead bridge)
+
+`futures_signal_adapter.py` adapts the existing strategy engine's long/flat boolean output to the Futures replay's per-candle target-side input. It shifts every completed-candle signal forward by one row: the first candle is always flat, and a signal calculated from candle i's close can only become active at candle i+1's open. It validates timestamp ordering/uniqueness and finite positive close prices. The current strategy engine is long/flat only, so this adapter intentionally does not manufacture short signals.
+
+The adapter is a small, testable bridge; it does not yet select or optimize a strategy, coordinate capital across symbols, or run a persistent Futures paper account. It must be paired with trade/mark/funding datasets on the same verified candle timeline. The Futures replay remains research-only and `live_trading_enabled` remains false.
+
+
+## Multi-symbol Futures portfolio coordinator (ring-fenced v1)
+
+`futures_portfolio_coordinator.py` coordinates several linear USDT perpetual paper replays under one starting-equity and gross-notional budget. It allocates the minimum valid contract-lot notional to each supplied symbol first, then distributes any remaining target and maximum notional using configurable weights and per-symbol concentration caps. Ring-fenced starting equity is assigned in proportion to each symbol's maximum-notional allocation, so no sleeve receives a notional cap above its own starting equity. This avoids assigning a sleeve less than an instrument's published minimum contract size. It validates all market timelines and instrument identities before replay, then delegates each allocation to the single-symbol ledger. Every symbol's trade and mark candles must match exactly and all symbols must share the same timestamps. The result aggregates per-symbol ledgers, portfolio equity, gross mark-notional exposure and portfolio drawdown.
+
+Capital remains ring-fenced by symbol rather than cross-margined, but risk limits are now portfolio-wide. The coordinator runs a synchronized exploratory pass with sleeve-level loss guards neutralized, aggregates each completed candle's mark-to-market equity, and detects the first portfolio daily-loss or peak-to-trough drawdown breach. It then reruns the replay with a latched breaker: at the next candle open, every symbol is forced flat and all later entries are blocked. The coordinated exit is charged the normal adverse slippage and exit fee. If the breach occurs on the final candle, the normal end-of-replay close exits positions at that candle's close because no next candle exists. Daily loss resets at UTC day boundaries using the prior completed portfolio equity as the new day's baseline; drawdown remains measured from the portfolio's running peak. This is a completed-candle controller, not an intrabar or real-time stop, and it cannot guarantee a live exchange exit price.
+
+The aggregate gross-notional cap is constrained to no more than starting equity (1x paper assumption). If combined minimum contract sizes exceed the configured portfolio target or cap, the replay fails closed rather than rounding exposure upward. Shared margin, cross-symbol netting, maintenance margin and liquidation remain unimplemented. This is research replay only; it does not create a scheduled paper account or enable live trading.
+
+
+## Weighted portfolio sizing and concentration controls
+
+`futures_portfolio_sizing.py` adds a minimum-lot-aware portfolio allocator. It reserves each market's minimum valid contract notional first, then distributes remaining target and maximum budgets using configurable positive weights. Weighted water-filling redistributes budget when a market reaches its configured concentration cap. The allocator fails closed if minimum lots exceed the budget, a market's minimum lot already breaches its concentration cap, the weighted budget cannot be fully allocated, or inputs are invalid. The coordinator accepts optional `allocation_weights` and `max_symbol_allocation_pct`; omitted weights preserve equal weighting, and the default concentration setting remains 100% for compatibility. This controls planned per-symbol sizing; it is not a dynamic cross-market exposure limiter during price gaps and does not replace the existing completed-candle portfolio loss/drawdown breaker. No live trading capability is added.
+
+
+## Dynamic portfolio gross-exposure breaker
+
+The portfolio coordinator now evaluates aggregate linear-contract notional using mark prices at both the candle open (after the supplied signal has been processed) and completed candle close. If a price gap or new position pushes combined gross notional above the configured portfolio cap at the open, the second replay pass forces every sleeve flat at that same candle open, applying normal adverse slippage and exit fees. If the cap is breached only at a completed close, all sleeves are flattened at the next candle open. The breaker latches for the remainder of the replay and blocks later entries. Exposure is measured from contract count, contract metadata and mark price—not from stale entry notional.
+
+This is a synchronized candle-level emergency flatten, not partial portfolio rebalancing. It cannot react inside a candle, guarantee a real exchange fill, or model cross-margin, maintenance margin or liquidation. Missing or invalid mark prices continue to fail closed. The feature remains paper-replay only and does not enable live trading.
+
+
+## Adversarial Futures portfolio stress checks
+
+`tests/test_futures_portfolio_stress.py` adds deterministic adverse scenarios across multiple simultaneous sleeves: a correlated cross-asset price shock, simultaneous realized funding debits, and invalid mark-price reference data. The tests verify that portfolio loss controls coordinate exits across symbols and that invalid risk inputs stop the replay instead of being silently accepted. These tests validate accounting and safety behavior under selected scenarios; they do not establish strategy profitability, cover every market regime, or replace exchange-specific margin and liquidation simulation.
+
+
+## Isolated Futures margin and liquidation estimate (research only)
+
+`futures_margin_model.py` adds a standalone calculator for a single linear USDT perpetual position under an explicitly supplied isolated-margin amount, maintenance-margin rate, liquidation-fee reserve rate, and net accrued costs. It computes mark-to-market P&L, margin equity, maintenance requirement, remaining equity buffer, effective leverage, and an estimated liquidation threshold for long and short positions. Positive accrued costs reduce margin equity; funding credits can be represented as negative costs.
+
+This is intentionally not wired into the existing 1x portfolio replay yet. It uses one constant maintenance rate supplied by the caller; it does not fetch or infer exchange maintenance tiers, and it does not simulate partial liquidation, cross margin, insurance funds, ADL, intrabar price paths, exchange-specific bankruptcy prices, or actual liquidation execution. The estimate is useful for controlled unit tests and scenario analysis only. Before integration or any leverage conclusions, the model must be calibrated against the selected exchange's official contract-specific margin and liquidation rules. Live trading remains disabled.
+
+
+## Exchange selection
+
+The current venue decision, Burkina Faso availability checks, source separation rules and safe rollout sequence are documented in [`EXCHANGE_SELECTION.md`](EXCHANGE_SELECTION.md). Binance is the user's verified primary account venue; USDⓈ-M product/contract eligibility still needs explicit confirmation before venue-specific Futures simulation. OKX remains a separately labelled read-only derivatives market-data source. Live trading remains disabled.
+
+
+## Binance USD-M public data adapter (research only)
+
+`binance_usdm_data.py` is a separate read-only adapter for Binance USDⓈ-M public trade candles, mark-price candles and historical funding records. Trade and mark-price series remain separate; candle parsing validates chronology, OHLC values and completed-bar timestamps, while funding records are deduplicated and ordered by settlement time. This adapter is tested with mocked API responses and does not access a Binance account, use API keys, configure leverage or place orders.
+
+The adapter is not yet the active Futures data source for the scheduled portfolio worker. GitHub Actions previously received HTTP 451 from Binance USD-M endpoints; a live endpoint check must succeed before switching a market from the explicitly labelled OKX research feed. Never silently substitute one venue's funding, mark prices or contract rules for another venue. Live trading remains disabled.
+
+
+## Binance USD-M instrument metadata (read-only)
+
+`binance_usdm_instrument.py` reads public `/fapi/v1/exchangeInfo` rules and normalizes active USDT-margined perpetuals for the existing linear-contract accounting primitives. It validates the PERPETUAL/TRADING state, USDT quote and margin assets, price tick, quantity step/minimum/maximum, market-quantity filters and minimum notional. Binance Futures order quantity is expressed in base-asset units; the adapter represents one quantity unit as one base-asset unit and keeps that convention explicit in metadata. It does not copy OKX contract multipliers or treat Binance quantities as OKX contract counts.
+
+The exchange-info maintenance-margin and liquidation-fee fields are retained only as references. They are not a substitute for account-specific leverage brackets or a complete liquidation model. This metadata adapter is not wired into the portfolio worker yet; source switching requires a separate end-to-end validation of trade candles, mark candles, funding timestamps and execution assumptions. It has no account access, API credentials, leverage configuration or order placement. `live_trading_enabled` remains false.
+
+Official Binance USD-M API reference: [Exchange Information and market-data endpoints](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data).
+
+
+## Binance USD-M isolated public-data worker
+
+`binance_usdm_worker.py` collects a separate Binance USD-M dataset for each initial-universe perpetual: 100 completed hourly trade candles, 100 completed hourly mark-price candles, up to 100 realized funding observations, and public exchange contract metadata. It writes its own snapshot and analysis artifacts and never merges Binance Futures records into the OKX dataset. The readiness gate requires at least 60 completed trade candles, exact trade/mark timestamp alignment, valid native Binance instrument identity, and any funding settlement inside the replay window to align exactly with a candle open.
+
+The scheduled `.github/workflows/binance-usdm-scan.yml` workflow independently tests whether GitHub Actions can reach Binance USD-M public endpoints. It preserves diagnostic artifacts on every run. A runner-wide HTTP 451 response is recorded as `blocked_by_http_451` and treated as an explicit provider skip, not as a successful data scan or paper readiness; other unexpected collection failures remain workflow failures. On that known REST restriction, the worker also probes the separate official Binance Vision historical archive host for prior-month trade klines, mark-price klines and a funding-rate archive candidate. This probe only checks file availability; it does not download or activate historical data. Any archive fallback must independently validate checksums, schema, timestamp coverage and exact funding alignment before it can support replay. Archived data is delayed (daily files are published the next day), so it cannot replace a current market feed. Binance USD-M is not activated for replay while the runner cannot retrieve and validate its own venue data. A successful public-data scan is not account authentication or proof of profitability.
+
+Binance USD-M market paper sizing uses `MARKET_LOT_SIZE` for simulated market fills, while preserving `LOT_SIZE` separately for limit-order reference. Minimum notional is included in portfolio minimum-lot allocation. The paper ledger accepts Binance's native symbol identity and base-asset quantity convention; it still uses 1x fixed-notional research assumptions, not Binance margin tiers or liquidation rules. No order API, credentials, deposits or live execution are involved.
+
+### Official Binance Vision archive audit
+
+When the live USD-M REST endpoints return HTTP 451, the worker audits the two latest complete monthly archive periods from the separate official `data.binance.vision` host. For each of the seven symbols it downloads the trade-kline, mark-price-kline and funding-rate ZIP files, verifies their SHA-256 checksums, and reports row counts, timestamp gaps and funding timestamp offsets. This is a diagnostic audit only; it does not silently promote archive data into the live REST collector or paper replay.
+
+Audit performed 2026-11-04:
+
+- **2026-09:** all 21 archive files passed SHA-256 checks. Each symbol had 720 hourly trade candles, 720 hourly mark-price candles and 90 funding records; trade and mark timelines had no gaps.
+- **2026-10:** all 21 archive files passed SHA-256 checks, but each symbol had 24 missing trade-candle hours and 48 missing mark-price-candle hours. The missing intervals were 2026-10-28 for trade candles and 2026-10-28 through 2026-10-29 for mark prices. Each symbol had 93 funding records. October is therefore not eligible for replay.
+
+The September funding timestamps were observed 0–9ms after their hourly candle opens (October: 0–7ms). The ledger now preserves this event ordering: an exact-open settlement applies to the position carried into the open; a settlement 1–10ms after open applies after the candle-open signal fill. The ledger uses an event-provided mark price when present; otherwise it explicitly records use of the mark-candle open as a proxy. Events farther than 10ms from an hourly open inside the replay window fail closed.
+
+September is a candidate for a controlled historical pipeline test, not evidence of strategy profitability or a current market feed. October's gaps must not be filled by forward-filling prices or silently substituting another venue.
+
+Official archive documentation: [Binance Public Data](https://github.com/binance/binance-public-data).
+
+### Checksum-verified monthly archive ingestion
+
+`binance_usdm_archive.py` and `binance_usdm_archive_worker.py` now provide a separate historical-only ingestion path for Binance Vision monthly USD-M archives. The worker downloads the trade-kline, mark-price-kline and funding-rate ZIPs for all seven research symbols, verifies each ZIP against its companion `.CHECKSUM` file before parsing, and preserves the normalized dataset as a GitHub Actions artifact. It requires complete month-long hourly coverage, exactly aligned trade/mark timestamps, strictly chronological funding records and funding settlement offsets no greater than 10ms after the hourly open. Missing candles are rejected; there is no forward-fill or cross-venue substitution.
+
+The first successful September 2026 ingestion (GitHub Actions run [41876799253](https://github.com/Sirkings14/crypto-research-dashboard/actions/runs/41876799253)) validated all seven symbols: each had 720 trade candles, 720 mark-price candles and 90 realized funding records; all 42 ZIP/checksum pairs passed; trade and mark timelines matched with zero gaps. The normalized dataset is preserved in artifact `binance-usdm-monthly-archive-2026-09`. Funding archive rows do not contain event mark prices, so records explicitly preserve a missing event mark and disclose the mark-candle-open proxy required by the paper ledger. This archive is historical evidence only and does not restore the blocked live REST feed or establish profitability.
+
+The ingestion workflow can be run manually for another complete month or is triggered by changes to the archive ingestion code. It is not scheduled as a live market feed.
+
+### Descriptive archive analytics
+
+`binance_usdm_archive_analysis.py` adds a separate descriptive report for each verified symbol/month: trade-versus-mark basis, hourly return distribution and volatility, buy-and-hold drawdown, realized funding-rate distribution and quote-volume totals. It is explicitly not a strategy backtest, forecast or profitability score. Annualized volatility extrapolates only the observed month and is labelled as such. The archive worker writes this analysis to `data/binance_usdm_archive_analysis_latest.json` alongside the raw normalized archive artifact.
