@@ -41,6 +41,12 @@ A later, separately approved manual run requires:
 No credentials are required for the automated mocked tests. No Testnet order
 has been submitted by the CI workflow in this implementation.
 
+## Read-only preflight added
+
+`binance_testnet_preflight.py` validates a selected symbol against the Testnet `exchangeInfo` response and a Testnet ticker price. It checks trading status, USDT perpetual contract type, MARKET permission, lot-size rules and minimum notional. Quantity calculations use `Decimal`, floor to the permitted step size, and enforce the 25 USDT ceiling. The result explicitly labels order submission as disabled. Unit tests cover invalid metadata and cap/minimum-size failures.
+
+The adapter now exposes the public Testnet ticker endpoint. The next operational step is a manually triggered, read-only authenticated connectivity check; no order endpoint should be called during that check.
+
 ## Required next validation before a manual order
 
 The adapter currently does not discover or round quantity against live
