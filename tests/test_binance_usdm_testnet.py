@@ -1,6 +1,6 @@
 import hashlib
 import hmac
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import pytest
 
@@ -53,7 +53,7 @@ def test_host_is_pinned_to_futures_testnet_and_never_production():
     method, url, _ = session.calls[0]
     assert method == "POST"
     assert url == TESTNET_BASE_URL + ORDER_PATH
-    assert "fapi.binance.com" not in url
+    assert urlparse(url).hostname != "fapi.binance.com"
 
 
 def test_order_submission_is_disabled_by_default():
