@@ -6,6 +6,7 @@ import pytest
 
 from binance_usdm_testnet import (
     BinanceUsdMTestnetClient,
+    ACCOUNT_PATH,
     ORDER_PATH,
     TICKER_PRICE_PATH,
     TESTNET_BASE_URL,
@@ -173,3 +174,24 @@ def test_public_ticker_price_uses_pinned_testnet_endpoint():
     assert method == "GET"
     assert url == TESTNET_BASE_URL + TICKER_PRICE_PATH
     assert kwargs["params"] == {"symbol": "BTCUSDT"}
+
+
+
+def test_authenticated_account_status_is_read_only_and_testnet_pinned():
+    instance, session = client(payload={"canTrade": True, "canWithdraw": False})
+    result = instance.account_status()
+    assert result["canTrade"] is True
+    assert result["canWithdraw"] is False
+    method, url, kwargs = session.calls[0]
+    assert method == "GET"
+    assert url == TESTNET_BASE_URL + ACCOUNT_PATH
+    assert kwargs["params"]["timestamp"] == 1_700_000_000_000
+    assert "signature" in kwargs["params"]
+    assert kwargs["data"] is None
+
+
+def test_account_endpoint_rejects_mutating_http_methods():
+    instance, session = client()
+    with pytest.raises(ValueError, match="not permitted"):
+        instance._request("POST", ACCOUNT_PATH, signed=True)
+    assert session.calls == []
