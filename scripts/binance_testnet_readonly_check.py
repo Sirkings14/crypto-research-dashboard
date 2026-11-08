@@ -1,4 +1,4 @@
-"""One-shot, read-only Binance USD-M Futures Testnet authentication check."""
+""""One-shot, read-only Binance USD-M Futures Demo connectivity check."""
 from __future__ import annotations
 
 import json
@@ -6,22 +6,40 @@ import os
 import sys
 from pathlib import Path
 
+import requests
+
 # When invoked as `python scripts/...py`, Python places `scripts/` rather
-# than the repository root on sys.path. Add the root so the sibling adapter
-# module can be imported reliably in GitHub Actions and local runs.
+# than the repository root on sys.path. Add the root for reliable imports.
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from binance_usdm_testnet import BinanceUsdMTestnetClient, BinanceTestnetError
+from binance_usdm_testnet import (
+    TESTNET_BASE_URL,
+    BinanceUsdMTestnetClient,
+    BinanceTestnetError,
+)
 
 
 def main() -> int:
     api_key = os.environ.get("BINANCE_FUTURES_TESTNET_API_KEY", "")
     api_secret = os.environ.get("BINANCE_FUTURES_TESTNET_API_SECRET", "")
     if not api_key or not api_secret:
-        print("FAILED: required Testnet credentials are not configured.")
+        print("FAILED: required Demo credentials are not configured.")
         return 2
+
+    # First probe the same host with a public, unauthenticated GET. This
+    # separates host/network-level rejection from signed-account rejection.
+    # Never print response bodies, headers, credentials, or request details.
+    try:
+        public_response = requests.get(
+            TESTNET_BASE_URL + "/fapi/v1/ping",
+            timeout=10,
+            headers={"User-Agent": "CryptoResearchLab-Demo-Diagnostic/1.0"},
+        )
+        public_status = public_response.status_code
+    except requests.RequestException:
+        public_status = None
 
     try:
         client = BinanceUsdMTestnetClient(
@@ -33,33 +51,41 @@ def main() -> int:
         account = client.account_status()
         can_trade = account.get("canTrade")
         if not isinstance(can_trade, bool):
-            print("FAILED: Testnet returned an unexpected account response.")
+            print(
+                "FAILED: Demo returned an unexpected account response. "
+                f"public_probe_http_status={public_status or 'network_error'}"
+            )
             return 3
 
-        # Deliberately omit balances, positions, API key, and all raw response data.
+        # Deliberately omit balances, positions, API key, and raw response data.
         print(json.dumps({
             "result": "AUTHENTICATED",
-            "environment": "BINANCE_FUTURES_TESTNET",
+            "environment": "BINANCE_FUTURES_DEMO",
+            "public_probe_http_status": public_status,
             "read_only": True,
             "can_trade_permission": can_trade,
             "order_submissions": "NOT_ATTEMPTED",
         }, sort_keys=True))
         return 0
     except BinanceTestnetError as exc:
-        # Numeric status/code only: no response body, credentials, or request data.
-        details = []
+        # Numeric diagnostics only; never expose response bodies or credentials.
+        details = [
+            f"public_probe_http_status={public_status or 'network_error'}"
+        ]
         if exc.http_status is not None:
-            details.append(f"http_status={exc.http_status}")
+            details.append(f"account_http_status={exc.http_status}")
         if exc.api_code is not None:
             details.append(f"binance_code={exc.api_code}")
-        suffix = " " + " ".join(details) if details else " category=network_or_response"
-        print("FAILED: read-only Testnet authentication or request check failed." + suffix)
+        print(
+            "FAILED: read-only Demo authentication or request check failed. "
+            + " ".join(details)
+        )
         return 1
     except (ValueError, OSError):
         print("FAILED: local validation or operating-system error.")
         return 1
     except Exception:
-        print("FAILED: unexpected error during read-only Testnet check.")
+        print("FAILED: unexpected error during read-only Demo check.")
         return 1
 
 
