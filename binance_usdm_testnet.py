@@ -17,7 +17,7 @@ from urllib.parse import urlencode
 
 import requests
 
-TESTNET_BASE_URL = "https://testnet.binancefuture.com"
+TESTNET_BASE_URL = "https://demo-fapi.binance.com"
 EXCHANGE_INFO_PATH = "/fapi/v1/exchangeInfo"
 TICKER_PRICE_PATH = "/fapi/v1/ticker/price"
 ORDER_PATH = "/fapi/v1/order"
