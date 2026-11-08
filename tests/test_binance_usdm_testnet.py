@@ -195,3 +195,13 @@ def test_account_endpoint_rejects_mutating_http_methods():
     with pytest.raises(ValueError, match="not permitted"):
         instance._request("POST", ACCOUNT_PATH, signed=True)
     assert session.calls == []
+
+
+
+def test_read_only_check_refuses_to_run_without_testnet_secrets(monkeypatch, capsys):
+    from scripts.binance_testnet_readonly_check import main
+
+    monkeypatch.delenv("BINANCE_FUTURES_TESTNET_API_KEY", raising=False)
+    monkeypatch.delenv("BINANCE_FUTURES_TESTNET_API_SECRET", raising=False)
+    assert main() == 2
+    assert "credentials are not configured" in capsys.readouterr().out
