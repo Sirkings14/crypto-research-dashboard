@@ -7,6 +7,7 @@ import pytest
 from binance_usdm_testnet import (
     BinanceUsdMTestnetClient,
     ORDER_PATH,
+    TICKER_PRICE_PATH,
     TESTNET_BASE_URL,
 )
 
@@ -161,3 +162,14 @@ def test_order_lookup_requires_exactly_one_identifier():
     with pytest.raises(ValueError, match="exactly one"):
         instance.cancel_order(symbol="BTCUSDT", order_id=1, client_order_id="x")
     assert session.calls == []
+
+
+def test_public_ticker_price_uses_pinned_testnet_endpoint():
+    instance, session = client()
+    session.payload = {"symbol": "BTCUSDT", "price": "60000.00"}
+    result = instance.ticker_price(symbol="BTCUSDT")
+    assert result["price"] == "60000.00"
+    method, url, kwargs = session.calls[0]
+    assert method == "GET"
+    assert url == TESTNET_BASE_URL + TICKER_PRICE_PATH
+    assert kwargs["params"] == {"symbol": "BTCUSDT"}
