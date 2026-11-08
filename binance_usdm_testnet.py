@@ -19,6 +19,7 @@ import requests
 
 TESTNET_BASE_URL = "https://testnet.binancefuture.com"
 EXCHANGE_INFO_PATH = "/fapi/v1/exchangeInfo"
+TICKER_PRICE_PATH = "/fapi/v1/ticker/price"
 ORDER_PATH = "/fapi/v1/order"
 _SYMBOL = re.compile(r"^[A-Z0-9]{2,30}USDT$")
 _CLIENT_ID = re.compile(r"^[A-Za-z0-9_./:-]{1,36}$")
@@ -88,7 +89,7 @@ class BinanceUsdMTestnetClient:
         return symbol
 
     def _request(self, method: str, path: str, params: dict[str, Any] | None = None, *, signed: bool = False):
-        if path not in {EXCHANGE_INFO_PATH, ORDER_PATH}:
+        if path not in {EXCHANGE_INFO_PATH, TICKER_PRICE_PATH, ORDER_PATH}:
             raise ValueError("endpoint is not permitted by the Testnet adapter")
         if method not in {"GET", "POST", "DELETE"}:
             raise ValueError("HTTP method is not permitted")
@@ -124,6 +125,11 @@ class BinanceUsdMTestnetClient:
     def exchange_info(self) -> dict[str, Any]:
         """Fetch public Testnet symbol filters; never uses production metadata."""
         return self._request("GET", EXCHANGE_INFO_PATH)
+
+    def ticker_price(self, *, symbol: str) -> dict[str, Any]:
+        """Fetch a public Testnet ticker price for a validated symbol."""
+        symbol = self._validate_symbol(symbol)
+        return self._request("GET", TICKER_PRICE_PATH, {"symbol": symbol})
 
     def place_market_order(
         self,
