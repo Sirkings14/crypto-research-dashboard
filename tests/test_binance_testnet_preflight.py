@@ -18,9 +18,9 @@ def info(**overrides):
 
 
 def test_calculates_step_aligned_quantity_under_cap():
-    result = market_order_preflight(info(), "60000", "BTCUSDT")
-    assert result["quantity"] == "0.000"
-    assert result["estimated_notional_usdt"] == "0.000"
+    result = market_order_preflight(info(), "10000", "BTCUSDT")
+    assert result["quantity"] == "0.002"
+    assert result["estimated_notional_usdt"] == "20.000"
 
 
 def test_rejects_non_trading_symbol():
