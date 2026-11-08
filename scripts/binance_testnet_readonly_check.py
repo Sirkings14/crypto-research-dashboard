@@ -28,18 +28,26 @@ def main() -> int:
         print("FAILED: required Demo credentials are not configured.")
         return 2
 
-    # First probe the same host with a public, unauthenticated GET. This
-    # separates host/network-level rejection from signed-account rejection.
-    # Never print response bodies, headers, credentials, or request details.
-    try:
-        public_response = requests.get(
-            TESTNET_BASE_URL + "/fapi/v1/ping",
-            timeout=10,
-            headers={"User-Agent": "CryptoResearchLab-Demo-Diagnostic/1.0"},
-        )
-        public_status = public_response.status_code
-    except requests.RequestException:
-        public_status = None
+    # Probe both known USD-M Futures test hosts using public, unauthenticated
+    # GET requests only. The authenticated account request remains pinned to
+    # TESTNET_BASE_URL (the configured Demo host); credentials are NEVER sent
+    # to the legacy host. Never print response bodies, headers, or credentials.
+    public_statuses: dict[str, int | None] = {}
+    for host_name, base_url in (
+        ("demo", TESTNET_BASE_URL),
+        ("legacy_testnet", "https://testnet.binancefuture.com"),
+    ):
+        try:
+            public_response = requests.get(
+                base_url + "/fapi/v1/ping",
+                timeout=10,
+                headers={"User-Agent": "CryptoResearchLab-Demo-Diagnostic/1.0"},
+                allow_redirects=False,
+            )
+            public_statuses[host_name] = public_response.status_code
+        except requests.RequestException:
+            public_statuses[host_name] = None
+    public_status = public_statuses["demo"]
 
     try:
         client = BinanceUsdMTestnetClient(
@@ -53,7 +61,8 @@ def main() -> int:
         if not isinstance(can_trade, bool):
             print(
                 "FAILED: Demo returned an unexpected account response. "
-                f"public_probe_http_status={public_status or 'network_error'}"
+                f"demo_public_probe_http_status={public_status or 'network_error'} "
+                f"legacy_public_probe_http_status={public_statuses['legacy_testnet'] or 'network_error'}"
             )
             return 3
 
@@ -61,7 +70,9 @@ def main() -> int:
         print(json.dumps({
             "result": "AUTHENTICATED",
             "environment": "BINANCE_FUTURES_DEMO",
-            "public_probe_http_status": public_status,
+            "demo_public_probe_http_status": public_status,
+            "legacy_public_probe_http_status": public_statuses["legacy_testnet"],
+            "authenticated_account_host": "demo-fapi.binance.com",
             "read_only": True,
             "can_trade_permission": can_trade,
             "order_submissions": "NOT_ATTEMPTED",
@@ -70,7 +81,8 @@ def main() -> int:
     except BinanceTestnetError as exc:
         # Numeric diagnostics only; never expose response bodies or credentials.
         details = [
-            f"public_probe_http_status={public_status or 'network_error'}"
+            f"demo_public_probe_http_status={public_status or 'network_error'}",
+            f"legacy_public_probe_http_status={public_statuses['legacy_testnet'] or 'network_error'}"
         ]
         if exc.http_status is not None:
             details.append(f"account_http_status={exc.http_status}")
