@@ -37,5 +37,7 @@ jobs:
           python-version: "3.11"
       - name: Install test dependencies
         run: python -m pip install --disable-pip-version-check pytest requests
+      - name: Compile adapter and read-only check
+        run: python -m py_compile binance_usdm_testnet.py binance_testnet_preflight.py scripts/binance_testnet_readonly_check.py
       - name: Run isolated Testnet adapter tests
         run: python -m pytest -q tests/test_binance_usdm_testnet.py tests/test_binance_testnet_preflight.py
