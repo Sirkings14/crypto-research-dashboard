@@ -45,9 +45,18 @@ def main() -> int:
             "order_submissions": "NOT_ATTEMPTED",
         }, sort_keys=True))
         return 0
-    except (BinanceTestnetError, ValueError, OSError):
-        # Do not print exception details or request/response data to avoid leakage.
-        print("FAILED: read-only Testnet authentication or request check failed.")
+    except BinanceTestnetError as exc:
+        # Numeric status/code only: no response body, credentials, or request data.
+        details = []
+        if exc.http_status is not None:
+            details.append(f"http_status={exc.http_status}")
+        if exc.api_code is not None:
+            details.append(f"binance_code={exc.api_code}")
+        suffix = " " + " ".join(details) if details else " category=network_or_response"
+        print("FAILED: read-only Testnet authentication or request check failed." + suffix)
+        return 1
+    except (ValueError, OSError):
+        print("FAILED: local validation or operating-system error.")
         return 1
     except Exception:
         print("FAILED: unexpected error during read-only Testnet check.")
