@@ -5,7 +5,7 @@
 `binance_usdm_testnet.py` is an isolated execution adapter for the Binance
 USD-M Futures Testnet host only:
 
-- Fixed host: `https://testnet.binancefuture.com`
+- Fixed host: `https://demo-fapi.binance.com`
 - No configurable base URL and no production fallback.
 - No production API credentials, leverage-setting, account transfer, withdrawal,
   or live-order methods.
@@ -28,8 +28,10 @@ or exchange connectivity work.
 
 A later, separately approved manual run requires:
 
-1. A Binance Futures Testnet account and API key/secret created specifically
-   for that Testnet environment. Never use production credentials.
+1. A Binance Futures Demo Trading account and API key/secret created specifically
+   through the official Demo Trading API Management page at
+   `https://demo.binance.com/en/my/settings/api-management`. Never use
+   production credentials or legacy Mock Trading keys.
 2. Testnet funds obtained through the official Testnet funding mechanism.
 3. Store the credentials as GitHub Actions secrets named
    `BINANCE_FUTURES_TESTNET_API_KEY` and
@@ -69,7 +71,8 @@ endpoint, or production credential path is introduced.
 ## Read-only authenticated connectivity check
 
 The manually triggered workflow `.github/workflows/binance-testnet-readonly-connection.yml`
-uses only the two Testnet GitHub Actions secrets and the fixed Testnet host.
+uses only the two Testnet-named GitHub Actions secrets and the fixed Binance
+Demo Trading Futures host (`https://demo-fapi.binance.com`).
 It calls the signed `GET /fapi/v2/account` endpoint to verify authentication.
 It does not call any order, cancel, transfer, leverage, or withdrawal endpoint.
 The script prints only an authentication result and the account's trade-permission
