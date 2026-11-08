@@ -64,3 +64,21 @@ the test position with a reduce-only order. Never run this against production.
 
 `live_trading_enabled` remains false. No live trading workflow, production
 endpoint, or production credential path is introduced.
+
+
+## Read-only authenticated connectivity check
+
+The manually triggered workflow `.github/workflows/binance-testnet-readonly-connection.yml`
+uses only the two Testnet GitHub Actions secrets and the fixed Testnet host.
+It calls the signed `GET /fapi/v2/account` endpoint to verify authentication.
+It does not call any order, cancel, transfer, leverage, or withdrawal endpoint.
+The script prints only an authentication result and the account's trade-permission
+boolean; it deliberately does not print balances, positions, raw API responses,
+or credential material.
+
+The workflow requires the manual input `YES_READ_ONLY`; the default is `NO`.
+The workflow file is also installed on the default branch so it can be manually
+dispatched in GitHub Actions. It checks out the `binance-testnet-execution`
+branch containing the reviewed adapter code. A successful run proves only
+that Testnet authentication works; it is not an order test or profitability
+evidence.
