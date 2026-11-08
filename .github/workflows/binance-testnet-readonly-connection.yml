@@ -1,0 +1,42 @@
+name: Binance Futures Testnet read-only connection
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_read_only:
+        description: "Confirm this run may perform authenticated GET requests only"
+        required: true
+        type: choice
+        options:
+          - NO
+          - YES_READ_ONLY
+        default: NO
+
+permissions:
+  contents: read
+
+concurrency:
+  group: binance-testnet-read-only-connection
+  cancel-in-progress: false
+
+jobs:
+  read-only-auth-check:
+    if: ${{ inputs.confirm_read_only == 'YES_READ_ONLY' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BINANCE_FUTURES_TESTNET_API_KEY: ${{ secrets.BINANCE_FUTURES_TESTNET_API_KEY }}
+      BINANCE_FUTURES_TESTNET_API_SECRET: ${{ secrets.BINANCE_FUTURES_TESTNET_API_SECRET }}
+    steps:
+      - name: Checkout Testnet adapter branch
+        uses: actions/checkout@v4
+        with:
+          ref: binance-testnet-execution
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install runtime dependency
+        run: python -m pip install --disable-pip-version-check requests
+      - name: Run read-only authenticated Testnet check
+        run: python scripts/binance_testnet_readonly_check.py
