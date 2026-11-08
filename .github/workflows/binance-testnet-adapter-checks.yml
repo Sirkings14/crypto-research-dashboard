@@ -6,6 +6,8 @@ on:
     paths:
       - "binance_usdm_testnet.py"
       - "tests/test_binance_usdm_testnet.py"
+      - "binance_testnet_preflight.py"
+      - "tests/test_binance_testnet_preflight.py"
       - ".github/workflows/binance-testnet-adapter-checks.yml"
   pull_request:
     paths:
@@ -33,4 +35,4 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --disable-pip-version-check pytest requests
       - name: Run isolated Testnet adapter tests
-        run: python -m pytest -q tests/test_binance_usdm_testnet.py
+        run: python -m pytest -q tests/test_binance_usdm_testnet.py tests/test_binance_testnet_preflight.py
