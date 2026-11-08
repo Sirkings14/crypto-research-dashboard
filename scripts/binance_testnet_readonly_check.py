@@ -4,6 +4,14 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
+
+# When invoked as `python scripts/...py`, Python places `scripts/` rather
+# than the repository root on sys.path. Add the root so the sibling adapter
+# module can be imported reliably in GitHub Actions and local runs.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from binance_usdm_testnet import BinanceUsdMTestnetClient, BinanceTestnetError
 
