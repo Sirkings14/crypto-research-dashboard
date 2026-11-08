@@ -21,6 +21,7 @@ TESTNET_BASE_URL = "https://testnet.binancefuture.com"
 EXCHANGE_INFO_PATH = "/fapi/v1/exchangeInfo"
 TICKER_PRICE_PATH = "/fapi/v1/ticker/price"
 ORDER_PATH = "/fapi/v1/order"
+ACCOUNT_PATH = "/fapi/v2/account"
 _SYMBOL = re.compile(r"^[A-Z0-9]{2,30}USDT$")
 _CLIENT_ID = re.compile(r"^[A-Za-z0-9_./:-]{1,36}$")
 _ALLOWED_ORDER_TYPES = {"MARKET"}
@@ -89,10 +90,16 @@ class BinanceUsdMTestnetClient:
         return symbol
 
     def _request(self, method: str, path: str, params: dict[str, Any] | None = None, *, signed: bool = False):
-        if path not in {EXCHANGE_INFO_PATH, TICKER_PRICE_PATH, ORDER_PATH}:
+        allowed_methods = {
+            EXCHANGE_INFO_PATH: {"GET"},
+            TICKER_PRICE_PATH: {"GET"},
+            ACCOUNT_PATH: {"GET"},
+            ORDER_PATH: {"GET", "POST", "DELETE"},
+        }
+        if path not in allowed_methods:
             raise ValueError("endpoint is not permitted by the Testnet adapter")
-        if method not in {"GET", "POST", "DELETE"}:
-            raise ValueError("HTTP method is not permitted")
+        if method not in allowed_methods[path]:
+            raise ValueError("HTTP method is not permitted for this Testnet endpoint")
         payload = dict(params or {})
         if signed:
             payload["timestamp"] = int(self._clock_ms())
@@ -130,6 +137,10 @@ class BinanceUsdMTestnetClient:
         """Fetch a public Testnet ticker price for a validated symbol."""
         symbol = self._validate_symbol(symbol)
         return self._request("GET", TICKER_PRICE_PATH, {"symbol": symbol})
+
+    def account_status(self) -> dict[str, Any]:
+        """Read authenticated account permissions from Testnet; never mutates state."""
+        return self._request("GET", ACCOUNT_PATH, signed=True)
 
     def place_market_order(
         self,
