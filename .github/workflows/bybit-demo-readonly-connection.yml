@@ -1,0 +1,48 @@
+name: Bybit Demo read-only connection
+
+on:
+  push:
+    branches: [bybit-demo-readonly-adapter]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Confirm read-only account check only"
+        required: true
+        default: "NO"
+        type: choice
+        options:
+          - "NO"
+          - "YES_READ_ONLY"
+
+permissions:
+  contents: read
+
+jobs:
+  adapter-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip pytest requests
+      - run: python -m pytest -q tests/test_bybit_demo_readonly.py
+
+  read-only-auth-check:
+    if: ${{ inputs.confirmation == 'YES_READ_ONLY' }}
+    needs: adapter-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BYBIT_DEMO_API_KEY: ${{ secrets.BYBIT_DEMO_API_KEY }}
+      BYBIT_DEMO_API_SECRET: ${{ secrets.BYBIT_DEMO_API_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip requests
+      - name: Read-only Demo account check
+        run: python bybit_demo_readonly.py
