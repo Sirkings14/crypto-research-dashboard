@@ -1,6 +1,10 @@
 name: Bybit Demo read-only connection
 
 on:
+  push:
+    branches: [bybit-demo-readonly-adapter]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       confirmation:
