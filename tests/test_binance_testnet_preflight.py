@@ -39,7 +39,7 @@ def test_rejects_missing_market_order_permission():
 
 
 def test_rejects_missing_filters():
-    with pytest.raises(PreflightError, match="filters"):
+    with pytest.raises(PreflightError, match="filter"):
         market_order_preflight(info(filters=[]), "60000", "BTCUSDT")
 
 
