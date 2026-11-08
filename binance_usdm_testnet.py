@@ -30,6 +30,11 @@ _ALLOWED_ORDER_TYPES = {"MARKET"}
 class BinanceTestnetError(RuntimeError):
     """Raised when Binance Testnet rejects a request or response."""
 
+    def __init__(self, message: str, *, http_status: int | None = None, api_code: int | None = None):
+        super().__init__(message)
+        self.http_status = http_status
+        self.api_code = api_code
+
 
 def _positive_decimal(value: Any, field: str) -> Decimal:
     try:
@@ -119,6 +124,22 @@ class BinanceUsdMTestnetClient:
             )
             response.raise_for_status()
             result = response.json()
+        except requests.HTTPError as exc:
+            # Preserve only numeric diagnostics; never expose Binance's response body.
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            api_code = None
+            try:
+                body = exc.response.json() if exc.response is not None else {}
+                candidate = body.get("code") if isinstance(body, dict) else None
+                if isinstance(candidate, int) and not isinstance(candidate, bool):
+                    api_code = candidate
+            except (ValueError, AttributeError):
+                pass
+            raise BinanceTestnetError(
+                "Binance Futures Testnet rejected the request",
+                http_status=status if isinstance(status, int) else None,
+                api_code=api_code,
+            ) from exc
         except requests.RequestException as exc:
             raise BinanceTestnetError("Binance Futures Testnet request failed") from exc
         except ValueError as exc:
@@ -126,7 +147,10 @@ class BinanceUsdMTestnetClient:
         if not isinstance(result, dict):
             raise BinanceTestnetError("Binance Futures Testnet response must be a JSON object")
         if "code" in result and isinstance(result.get("code"), int) and result["code"] < 0:
-            raise BinanceTestnetError(f"Binance Futures Testnet error {result['code']}: {result.get('msg', 'unknown error')}")
+            raise BinanceTestnetError(
+                "Binance Futures Testnet returned an API error",
+                api_code=result["code"],
+            )
         return result
 
     def exchange_info(self) -> dict[str, Any]:
