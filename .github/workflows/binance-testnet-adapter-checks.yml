@@ -15,6 +15,9 @@ on:
     paths:
       - "binance_usdm_testnet.py"
       - "tests/test_binance_usdm_testnet.py"
+      - "binance_testnet_preflight.py"
+      - "tests/test_binance_testnet_preflight.py"
+      - "scripts/binance_testnet_readonly_check.py"
       - ".github/workflows/binance-testnet-adapter-checks.yml"
       - ".github/workflows/binance-testnet-readonly-connection.yml"
   workflow_dispatch:
