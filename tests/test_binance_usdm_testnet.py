@@ -1,4 +1,5 @@
 import hashlib
+import json
 import hmac
 from urllib.parse import urlencode, urlparse
 
@@ -50,9 +51,10 @@ def test_host_is_pinned_to_futures_testnet_and_never_production():
         symbol="BTCUSDT", side="BUY", quantity="0.0001",
         reference_price="60000", client_order_id="paper-test-001",
     )
-    method, url, _ = session.calls[0]
+    method, url, kwargs = session.calls[0]
     assert method == "POST"
     assert url == TESTNET_BASE_URL + ORDER_PATH
+    assert kwargs["allow_redirects"] is False
     assert urlparse(url).hostname != "fapi.binance.com"
 
 
@@ -186,6 +188,7 @@ def test_authenticated_account_status_is_read_only_and_testnet_pinned():
     assert method == "GET"
     assert url == TESTNET_BASE_URL + ACCOUNT_PATH
     assert kwargs["params"]["timestamp"] == 1_700_000_000_000
+    assert kwargs["allow_redirects"] is False
     assert "signature" in kwargs["params"]
     assert kwargs["data"] is None
 
@@ -205,3 +208,41 @@ def test_read_only_check_refuses_to_run_without_testnet_secrets(monkeypatch, cap
     monkeypatch.delenv("BINANCE_FUTURES_TESTNET_API_SECRET", raising=False)
     assert main() == 2
     assert "credentials are not configured" in capsys.readouterr().out
+
+
+
+def test_read_only_check_probes_only_pinned_host_without_redirects(monkeypatch, capsys):
+    import scripts.binance_testnet_readonly_check as check
+
+    monkeypatch.setenv("BINANCE_FUTURES_TESTNET_API_KEY", "test-key")
+    monkeypatch.setenv("BINANCE_FUTURES_TESTNET_API_SECRET", "test-secret")
+    calls = []
+
+    class PublicResponse:
+        status_code = 200
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return PublicResponse()
+
+    class ReadOnlyClient:
+        def __init__(self, api_key, api_secret, **kwargs):
+            assert api_key == "test-key"
+            assert api_secret == "test-secret"
+            assert kwargs["allow_order_submission"] is False
+
+        def account_status(self):
+            return {"canTrade": False}
+
+    monkeypatch.setattr(check.requests, "get", fake_get)
+    monkeypatch.setattr(check, "BinanceUsdMTestnetClient", ReadOnlyClient)
+
+    assert check.main() == 0
+    assert len(calls) == 1
+    assert calls[0][0] == TESTNET_BASE_URL + "/fapi/v1/ping"
+    assert calls[0][1]["allow_redirects"] is False
+    output = json.loads(capsys.readouterr().out)
+    assert output["read_only"] is True
+    assert output["order_submissions"] == "NOT_ATTEMPTED"
+    assert "test-key" not in json.dumps(output)
+    assert "test-secret" not in json.dumps(output)
