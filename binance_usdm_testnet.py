@@ -121,6 +121,7 @@ class BinanceUsdMTestnetClient:
                 params=payload if method == "GET" else None,
                 data=payload if method in {"POST", "DELETE"} else None,
                 timeout=self.timeout_seconds,
+                allow_redirects=False,
             )
             response.raise_for_status()
             result = response.json()
